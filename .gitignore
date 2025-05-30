@@ -11,7 +11,7 @@ __pycache__/
 
 # Archivos de configuración sensibles (añade aquí los tuyos si es necesario)
 config/api_keys.env
-.env
+#.env
 
 # Bases de datos SQLite
 *.db

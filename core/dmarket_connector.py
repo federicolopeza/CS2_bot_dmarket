@@ -163,70 +163,74 @@ class DMarketAPI:
             logger.error(f"Error inesperado durante la petición a la API: {e}")
             return {"error": "UnexpectedAPIError", "message": str(e)}
 
-    def get_market_items(self, game: str = "CS2", name: str = None, limit: int = 100, offset: int = 0, 
-                         order_by: str = "price", order_dir: str = "asc", currency: str = "USD", 
-                         price_from: int = None, price_to: int = None, tree_filters: dict = None) -> dict:
+    def get_market_items(self, game_id: str = "csgo", title: str = None, limit: int = 100, offset: int = 0,
+                         order_by: str = "price", order_dir: str = "asc", currency: str = "USD",
+                         price_from: int = None, price_to: int = None, tree_filters: dict = None,
+                         **kwargs) -> dict:
         """
-        Obtiene ítems del mercado de DMarket. (Endpoint: /exchange/v1/market/items)
-        Este endpoint generalmente no requiere autenticación compleja (firma), solo la X-Api-Key en cabeceras.
+        Obtiene ítems del mercado de DMarket utilizando el endpoint /exchange/v1/market/items.
+
+        Este endpoint generalmente no requiere autenticación compleja (firma HMAC),
+        solo la X-Api-Key en las cabeceras (gestionada automáticamente por la sesión).
 
         Args:
-            game (str): Juego para filtrar (ej. "CS2", "dota2", "rust"). Por defecto "CS2".
-            name (str, optional): Nombre del ítem para buscar.
-            limit (int): Número de ítems a devolver. Máximo permitido por la API (consultar doc).
-            offset (int): Desplazamiento para paginación.
-            order_by (str): Campo por el cual ordenar (ej. "price", "updated").
-            order_dir (str): Dirección de ordenación ("asc" o "desc").
-            currency (str): Moneda para los precios (ej. "USD", "EUR").
-            price_from (int, optional): Precio mínimo (en centavos, ej. 1000 para $10.00).
-            price_to (int, optional): Precio máximo (en centavos).
+            game_id (str): ID del juego para filtrar (ej. "a8db" para CS2/CSGO, "dota2", "rust").
+                           **Importante:** Verificar el `gameId` correcto para CS2 en la documentación de DMarket.
+                           Por defecto "csgo" (placeholder común para CS2).
+            title (str, optional): Nombre (título) del ítem para buscar. Por defecto None.
+            limit (int): Número máximo de ítems a devolver. Consultar la documentación de DMarket
+                         para el valor máximo permitido (usualmente 100). Por defecto 100.
+            offset (int): Desplazamiento para la paginación (cuántos ítems saltar). Por defecto 0.
+            order_by (str): Campo por el cual ordenar los resultados (ej. "price", "updated", "name").
+                            Por defecto "price".
+            order_dir (str): Dirección de la ordenación ("asc" para ascendente, "desc" para descendente).
+                             Por defecto "asc".
+            currency (str): Código de moneda para los precios (ej. "USD", "EUR"). Por defecto "USD".
+            price_from (int, optional): Precio mínimo del ítem en la menor unidad de la moneda
+                                        (ej. centavos para USD: 1000 para $10.00). Por defecto None.
+            price_to (int, optional): Precio máximo del ítem en la menor unidad de la moneda.
+                                      Por defecto None.
             tree_filters (dict, optional): Filtros adicionales basados en el árbol de categorías de DMarket.
-                                         Ejemplo: {"category_path": "mil-spec_pistol/usp-s"}
+                                         La estructura exacta debe consultarse en la documentación.
+                                         Ejemplo: `{"category_path": "mil-spec_pistol/usp-s"}` o
+                                                  `{"quality": "StatTrak™", "exterior": "Minimal Wear"}`.
+                                         Por defecto None.
+            **kwargs: Otros parámetros de query que la API de DMarket pueda aceptar para este endpoint.
+                      Estos se añadirán directamente a la petición.
 
         Returns:
-            dict: Respuesta JSON de la API o diccionario de error.
+            dict: La respuesta JSON parseada de la API conteniendo los ítems y metadatos de paginación,
+                  o un diccionario de error si la petición falla.
+                  Un resultado exitoso típico incluye claves como "objects", "total", "limit", "offset".
         """
         path = "/exchange/v1/market/items"
-        params = {
-            "gameId": game.lower(), # DMarket suele usar Ids de juego como "a8db", "csgo", etc. "CS2" podría necesitar mapeo o usar el ID correcto.
-                                     # Por ahora, se asume que la API podría aceptar el nombre. Revisar documentación.
-            "title": name,
+        query_params = {
+            "gameId": game_id, # Usar el parámetro game_id aquí
+            "title": title,    # Usar el parámetro title aquí
             "limit": limit,
-            "offset": str(offset), # Algunos APIs esperan strings para offset/limit
+            "offset": str(offset),
             "orderBy": order_by,
             "orderDir": order_dir,
             "currency": currency.upper(),
         }
         if price_from is not None:
-            params["priceFrom"] = price_from
+            query_params["priceFrom"] = price_from
         if price_to is not None:
-            params["priceTo"] = price_to
+            query_params["priceTo"] = price_to
+
         if tree_filters:
-            # DMarket puede esperar los treeFilters como un string JSON en el query param
-            # o como parámetros separados. Consultar documentación.
-            # Ejemplo: treeFilters={"category":"weapon|pistol", "exterior":"mw"}
-            # Esto se convertiría en &treeFilters[category]=weapon|pistol&treeFilters[exterior]=mw
-            # o &treeFilters=JSON_STRING
-            # Por simplicidad, si se usa urlencode, los diccionarios anidados se manejan bien.
-            # params["treeFilters"] = json.dumps(tree_filters) # Si es un solo string JSON
-            params.update(tree_filters) # Si son múltiples parámetros bajo treeFilters[key]
-        
-        # Limpiar parámetros None para no enviarlos vacíos
-        params = {k: v for k, v in params.items() if v is not None}
-        
-        # Este endpoint es público y solo requiere X-Api-Key (ya en self.session.headers)
-        # No necesita add_auth_headers = True a menos que la documentación lo indique.
-        # Si fuera un endpoint que REQUIERE firma, sería add_auth_headers=True
-        response = self._request("GET", path, params=params) # add_auth_headers=False por defecto
-        
-        # Ejemplo básico de manejo de rate limits (muy simplificado)
-        if isinstance(response, dict) and response.get("error") == "HTTPError" and response.get("status_code") == 429:
-            logger.warning("Rate limit excedido. Esperando 60 segundos para reintentar...")
-            # time.sleep(60) # No usar time.sleep en código que pueda ser asíncrono o bloquear. Implementar backoff más robusto.
-                            # Aquí solo logueamos y devolvemos el error para que el llamador decida.
-            # return self.get_market_items(...) # Reintento simple (puede causar bucles)
-        
-        return response
+            query_params.update(tree_filters)
+
+        if kwargs:
+            query_params.update(kwargs)
+
+        final_params = {k: v for k, v in query_params.items() if v is not None}
+        response_data = self._request("GET", path, params=final_params)
+
+        if isinstance(response_data, dict) and response_data.get("error") == "HTTPError" and response_data.get("status_code") == 429:
+            logger.warning(f"Rate limit (429) excedido para {path}. Error: {response_data.get('message')}. "
+                           "Considerar implementar una estrategia de backoff exponencial.")
+        return response_data
 
 # Ejemplo de uso (requiere que .env esté configurado con las claves)
 if __name__ == "__main__":
@@ -241,7 +245,7 @@ if __name__ == "__main__":
         # Nota: el parámetro "name" en DMarket es "title". 
         # "gameId" para CS2 podría ser "csgo" o un ID específico. Revisar documentación de DMarket.
         # Usaremos "csgo" como placeholder si "CS2" no funciona.
-        items_response = dmarket_api.get_market_items(game="csgo", name="AK-47 | Redline", limit=5)
+        items_response = dmarket_api.get_market_items(game_id="csgo", title="AK-47 | Redline", limit=5)
         
         if "error" in items_response:
             logger.error(f"Error al obtener ítems: {items_response}")

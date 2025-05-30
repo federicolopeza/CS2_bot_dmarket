@@ -62,23 +62,39 @@ def run_test():
                 if items_data.get("status_code"):
                     logger.error(f"  Status Code: {items_data['status_code']}")
             else:
-                logger.info(f"Respuesta para '{skin_name}': {items_data.get('total', 0)} ítems encontrados en total (mostrando hasta {items_data.get('limit', 0)}).")
-                retrieved_objects = items_data.get("objects", [])
+                # Corregir acceso a Total y Limit, y convertirlos a int para el log
+                total_items_api_dict = items_data.get("total", {})
+                total_items_count = int(total_items_api_dict.get("items", 0))
+                
+                requested_limit = 5 # El límite que pasamos a la API
+                
+                # Corregir acceso a la lista de ítems (debe ser "objects")
+                retrieved_objects = items_data.get("objects", []) 
+                
+                logger.info(f"Respuesta para '{skin_name}': {total_items_count} ítems encontrados en total (solicitados hasta {requested_limit}, recibidos {len(retrieved_objects)}).")
+                
                 if retrieved_objects:
                     for item in retrieved_objects:
                         price_info = item.get("price", {})
-                        # La moneda devuelta debería ser la solicitada (USD)
-                        price_value = price_info.get("USD", 0) / 100 # Asumiendo precio en centavos
+                        # Corregir conversión de precio (string a int antes de dividir)
+                        # y usar un default string "0" para int()
+                        price_str = price_info.get("USD", "0") 
+                        price_value = int(price_str) / 100 
                         
+                        # Acceder a los campos itemId, assetId y floatValue desde la estructura correcta
+                        item_id = item.get('itemId', 'N/A') # Correcto: itemId
+                        asset_id = item.get('extra', {}).get('inGameAssetID', 'N/A') # Correcto: item['extra']['inGameAssetID']
+                        float_value = item.get('extra', {}).get('floatValue', 'N/A') # Correcto: item['extra']['floatValue']
+
                         logger.info(
                             f"  - Nombre: {item.get('title', 'N/A')}, "
                             f"Precio: {price_value:.2f} USD, "
-                            f"Market ID: {item.get('itemId', 'N/A')}, "
-                            f"Asset ID: {item.get('assetId', 'N/A')}, " # Útil para futuras operaciones
-                            f"Float: {item.get('floatValue', 'N/A')}" # Si la API lo devuelve
+                            f"Market ID: {item_id}, "
+                            f"Asset ID: {asset_id}, "
+                            f"Float: {float_value}"
                         )
                 else:
-                    logger.info(f"No se encontraron listados para '{skin_name}' con los filtros actuales.")
+                    logger.info(f"No se encontraron listados para '{skin_name}' con los filtros actuales (Respuesta API: {items_data})")
         
         except Exception as e:
             logger.error(f"Ocurrió una excepción inesperada al procesar '{skin_name}': {e}", exc_info=True)

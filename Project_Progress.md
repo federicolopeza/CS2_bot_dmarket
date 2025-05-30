@@ -22,32 +22,51 @@ Este documento sigue el progreso del desarrollo del "Sistema Integral y Escalabl
     - Asistencia Gemini: (G-Doc) Solicitar un README.md inicial con la descripción del proyecto y la estructura de directorios.
     - Archivos: Estructura de directorios, README.md, .gitignore inicial.
     - Esfuerzo: Bajo.
-- **[A] Tarea: Configuración Inicial de Herramientas.**
+- **[X] Tarea: Configuración Inicial de Herramientas.**
     - Descripción: Inicializar requirements.txt. Configurar un linter (ej. Flake8) y un formateador (ej. Black) para mantener la calidad del código.
     - Asistencia Gemini: (G-Research) "Cuáles son los linters y formateadores recomendados para Python y cómo configurarlos?"
-    - Archivos: requirements.txt (con black y flake8).
+    - Archivos: requirements.txt (con black y flake8), .flake8, pyproject.toml.
     - Esfuerzo: Bajo.
+    - **Estado:** `Completado`
+    - **Notas:** Herramientas instaladas y archivos de configuración (.flake8, pyproject.toml) creados. Usuario ha configurado su editor (Cursor).
 
-## Fase 1: Fundación del Proyecto y Conexión DMarket (Días 3-10, basado en prompt: Días 1-10)
+## Fase 1: Fundación del Proyecto y Conexión DMarket API (Endpoints Públicos y Autenticados Básicos)
 **Objetivo:** Establecer la comunicación con la API de DMarket y la infraestructura básica de logging.
 
-- **[X] Tarea: Implementación del Módulo de Logging (utils/logger.py).**
+- **[X] Tarea: Implementación del Módulo de Logging (`utils/logger.py`)**
     - Descripción: Configurar un sistema de logging robusto y flexible (logging estructurado, diferentes niveles, salida a consola y archivo).
     - Asistencia Gemini: (G-Code)
     - Archivos: utils/logger.py.
     - Esfuerzo: Medio.
-- **[P] [A] Tarea: Desarrollo del Conector de API de DMarket (core/dmarket_connector.py) - Parte 1 (Autenticación y Endpoints Básicos).**
+    - **Estado:** `Completado`
+    - **Notas:** Logger configurado con salida a consola y archivo rotativo.
+- **[P] [A] Tarea: Desarrollo del Conector de API de DMarket (`core/dmarket_connector.py`) - Parte 1: Endpoints Públicos (ej. obtener ítems del mercado)**
     - Descripción: Implementar la gestión segura de claves API, funciones para autenticación y peticiones GET seguras, implementar GET /exchange/v1/market/items, manejo inicial de errores y límites de tasa.
     - Asistencia Gemini: (G-Code), (G-Research), (G-Doc).
     - Archivos: core/dmarket_connector.py, (usuario debe crear .env.example y .env).
     - Esfuerzo: Alto.
-    - **Nota:** Pendiente de verificación de detalles cruciales con la documentación oficial de DMarket por parte del usuario (game_id, formato de firma, tree_filters, rate limits).
-- **[X] Tarea: Script de Prueba Inicial (main.py o script dedicado).**
+    - **Estado:** `En Progreso - Funcionalidad básica de lectura implementada. Requiere Acción del Usuario para verificación de game_id, firma y otros detalles de la API.`
+    - **Subtareas:**
+        *   Cargar claves API desde variables de entorno (`.env`). (Completado)
+        *   Implementar método para `/exchange/v1/market/items` (GET). (Completado, funcionalidad básica)
+        *   Incluir manejo básico de errores y logging. (Completado)
+        *   Investigar y confirmar `game_id` para CS2. (Pendiente - Acción del Usuario)
+        *   Estructura preliminar para firma HMAC-SHA256. (Implementado, requiere verificación detallada)
+        *   Investigar estructura de `tree_filters` si es necesario. (Pendiente - Acción del Usuario)
+        *   Investigar y documentar `rate limits` de la API. (Pendiente - Acción del Usuario)
+    - **Notas:** La conexión básica y la obtención de ítems funcionan. Es crucial que el usuario verifique el `game_id` correcto para CS2, los detalles exactos para la firma HMAC-SHA256 (cuando se implementen los endpoints autenticados), y la estructura de `tree_filters` si se usarán filtros avanzados.
+- **[X] Tarea: Script de Prueba Inicial (`test_dmarket_fetch.py`)**
     - Descripción: Crear un script simple que utilice dmarket_connector.py para obtener y mostrar precios de DMarket. Usar el logger.
     - Asistencia Gemini: (G-Code).
     - Archivos: test_dmarket_fetch.py.
     - Esfuerzo: Medio.
-- **[X] Tarea: Pruebas Unitarias Iniciales para dmarket_connector.py.**
+    - **Estado:** `Completado - Script obtiene y parsea datos de ítems correctamente.`
+    - **Subtareas:**
+        *   Importar y usar `DMarketAPI`. (Completado)
+        *   Llamar a `get_market_items` para algunos ítems de prueba. (Completado)
+        *   Loggear la respuesta o errores. (Completado)
+    - **Notas:** El script confirma que podemos obtener y parsear la información de los ítems del mercado.
+- **[X] Tarea: Pruebas Unitarias Iniciales para `dmarket_connector.py`**
     - Descripción: Escribir pruebas unitarias usando unittest o pytest, usando unittest.mock para simular respuestas de API.
     - Asistencia Gemini: (G-Test).
     - Archivos: tests/unit/test_dmarket_connector.py.
