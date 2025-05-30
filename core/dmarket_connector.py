@@ -3,8 +3,10 @@ import os
 import time
 import hmac
 import hashlib
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote_plus
 import json # Import json a nivel de módulo
+from typing import Optional, Dict, Any, Union
+from datetime import datetime
 
 from dotenv import load_dotenv
 from utils.logger import logger # Asumiendo que utils.logger.py está creado
@@ -24,7 +26,9 @@ class DMarketAPI:
     BASE_URL_V1 = "https://api.dmarket.com"
     # Otros endpoints base podrían añadirse aquí si la API los tiene (ej. v2)
 
-    def __init__(self, public_key: str = None, secret_key: str = None):
+    DEFAULT_TIMEOUT = 10 # Segundos
+
+    def __init__(self, public_key: str = None, secret_key: str = None, timeout: int = DEFAULT_TIMEOUT):
         """
         Inicializa el conector de la API de DMarket.
 
@@ -36,6 +40,7 @@ class DMarketAPI:
                                         Por defecto None (se toma de variable de entorno).
             secret_key (str, optional): Clave API secreta. 
                                         Por defecto None (se toma de variable de entorno).
+            timeout (int, optional): Tiempo máximo para las solicitudes a la API. Por defecto 10 segundos.
 
         Raises:
             ValueError: Si la clave pública o secreta no se encuentran.
@@ -56,95 +61,183 @@ class DMarketAPI:
             # raise ValueError("DMarket Secret Key no encontrada.")
 
         self.base_url = self.BASE_URL_V1
+        self.timeout = timeout # Guardar el timeout
         self.session = requests.Session()
-        self.session.headers.update({
-            "X-Api-Key": self.public_key
-        })
+        # self.session.headers.update({
+        #     "X-Api-Key": self.public_key # No es necesario aquí si _make_request lo añade siempre
+        # })
 
-    def _create_signature(self, method: str, path: str, body: str = "", timestamp: str = None) -> str:
+    def get_market_items(self, game_id: str, title: str, limit: int = 100, offset: int = 0, currency: str = "USD", 
+                         order_by: str = "price", order_dir: str = "asc", 
+                         price_from: int = None, price_to: int = None, tree_filters: dict = None,
+                         **kwargs) -> dict:
         """
-        Crea la firma HMAC-SHA256 requerida para ciertos endpoints de DMarket.
-        La cadena a firmar es: method + path + body + timestamp.
-        Consulta la documentación oficial de DMarket para la estructura exacta.
+        Obtiene ítems del mercado de DMarket utilizando el endpoint /exchange/v1/market/items.
+        """
+        endpoint = "/exchange/v1/market/items" # Corregido aquí, era 'path'
+        query_params = {
+            "gameId": game_id,
+            "title": title,
+            "limit": limit,
+            # "offset": str(offset), # _make_request espera números si son números, str si son str.
+                                    # La API usualmente espera strings para params, requests los convierte.
+                                    # Por consistencia y para evitar errores, mejor convertir a str explícitamente si es necesario.
+            "offset": str(offset) if offset is not None else None,
+            "orderBy": order_by,
+            "orderDir": order_dir,
+            "currency": currency.upper(),
+        }
+        if price_from is not None:
+            query_params["priceFrom"] = price_from # Asumimos que la API espera int/str según corresponda
+        if price_to is not None:
+            query_params["priceTo"] = price_to
 
-        Args:
-            method (str): Método HTTP (GET, POST, PATCH, DELETE).
-            path (str): Ruta del endpoint (ej. /exchange/v1/market/items).
-            body (str): Cuerpo de la petición (para POST/PATCH, usualmente JSON stringificado).
-            timestamp (str): Timestamp actual en segundos como string.
+        if tree_filters: # tree_filters es un dict, se une a query_params
+            # Asegurarse que los valores en tree_filters sean adecuados para query params (strings usualmente)
+            for key, value in tree_filters.items():
+                if not isinstance(value, (str, int, float, bool)) and value is not None:
+                    logger.warning(f"Valor de tree_filter '{key}' no es un tipo primitivo ({type(value)}), convirtiendo a str.")
+                    query_params[key] = str(value)
+                else:
+                    query_params[key] = value
+
+        if kwargs:
+            # Similar para kwargs, asegurar tipos adecuados si es necesario.
+            for key, value in kwargs.items():
+                if not isinstance(value, (str, int, float, bool)) and value is not None:
+                    logger.warning(f"Valor de kwarg '{key}' no es un tipo primitivo ({type(value)}), convirtiendo a str.")
+                    query_params[key] = str(value)
+                else:
+                    query_params[key] = value
+
+        # Filtrar parámetros None ANTES de pasarlos a _make_request
+        final_params = {k: v for k, v in query_params.items() if v is not None}
+        
+        # Usar el método _make_request actualizado
+        response_data = self._make_request(method="GET", endpoint=endpoint, params=final_params)
+
+        if isinstance(response_data, dict) and response_data.get("error") == "HTTPError" and response_data.get("status_code") == 429:
+            logger.warning(f"Rate limit (429) excedido para {endpoint}. Error: {response_data.get('message')}. "
+                           "Considerar implementar una estrategia de backoff exponencial.")
+        return response_data
+
+    def get_account_balance(self) -> Dict[str, Any]:
+        """
+        Obtiene el balance actual de la cuenta del usuario en DMarket (USD y DMC).
+
+        Este endpoint requiere autenticación (firma HMAC).
 
         Returns:
-            str: La firma en formato hexadecimal.
-        
-        Raises:
-            ValueError: Si la secret_key no está disponible.
+            dict: La respuesta JSON parseada de la API conteniendo el balance, 
+                  o un diccionario de error si la petición falla.
+                  Una respuesta exitosa típica podría ser: {'USD': '12345', 'DMC': '0'} (valores como string en centavos/unidades mínimas)
+        """
+        endpoint = "/account/v1/balance"
+        # Este endpoint no requiere parámetros de query ni cuerpo, solo autenticación.
+        # _make_request se encargará de la firma y las cabeceras necesarias.
+        logger.info(f"Solicitando balance de la cuenta: GET {endpoint}")
+        return self._make_request(method="GET", endpoint=endpoint)
+
+    def _get_current_timestamp(self) -> str:
+        """Devuelve el timestamp actual en formato ISO 8601 UTC."""
+        return datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    def _sign_request(self, method: str, path_with_query: str, timestamp: str, body_string: str) -> str:
+        """
+        Genera la firma HMAC-SHA256 para una petición según la especificación:
+        stringToSign = method + path_with_query + body_string + timestamp
         """
         if not self.secret_key:
-            logger.error("No se puede crear la firma sin la DMarket Secret Key.")
-            raise ValueError("DMarket Secret Key no configurada, no se puede firmar la petición.")
+            logger.warning("No se puede generar firma: DMARKET_SECRET_KEY no encontrada.")
+            return ""
 
-        if timestamp is None:
-            timestamp = str(int(time.time()))
-        
-        string_to_sign = method.upper() + path + (body if body else "") + timestamp
-        logger.debug(f"String para firmar: {string_to_sign}")
+        string_to_sign = f"{method}{path_with_query}{body_string}{timestamp}"
+        logger.debug(f"String to sign: '{string_to_sign}'")
         
         signature = hmac.new(
             self.secret_key.encode('utf-8'),
             string_to_sign.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
-        logger.debug(f"Firma generada: {signature}")
+        logger.debug(f"Generated signature: {signature}")
         return signature
 
-    def _request(self, method: str, path: str, params: dict = None, data: dict = None, add_auth_headers: bool = False) -> dict:
+    def _make_request(
+        self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None, body: Optional[Any] = None
+    ) -> Dict[str, Any]:
         """
         Realiza una petición HTTP a la API de DMarket.
-
-        Args:
-            method (str): Método HTTP (GET, POST, PATCH, DELETE).
-            path (str): Ruta del endpoint (ej. /market/items).
-            params (dict, optional): Parámetros de query para la URL.
-            data (dict, optional): Cuerpo de la petición (para POST/PATCH).
-            add_auth_headers (bool): Si es True, añade cabeceras de autenticación (firma y timestamp).
-                                     Esto es necesario para endpoints privados.
-
-        Returns:
-            dict: La respuesta JSON de la API o un diccionario de error.
+        Incluye la lógica para firmar la petición si la secret_key está disponible.
         """
-        url = f"{self.base_url}{path}"
-        headers = self.session.headers.copy() # Copia las cabeceras base de la sesión
-        request_body_str = ""
+        full_url = f"{self.base_url}{endpoint}"
+        # Usar el timestamp en formato ISO 8601 UTC para X-Sign-Date y para la firma
+        timestamp_iso = self._get_current_timestamp() 
+        headers = {
+            "X-Api-Key": self.public_key,
+            "X-Sign-Date": timestamp_iso,
+        }
 
-        if data:
-            # DMarket espera el cuerpo como un string JSON para la firma
-            # y requests lo enviará como application/json si pasamos 'json=data'
-            import json
-            request_body_str = json.dumps(data, separators=(',', ':')) # Compact JSON
+        # Preparar path y body para la firma según la nueva especificación
+        path_for_signing = endpoint
+        if params:
+            # Ordenar los parámetros por clave para consistencia en la firma
+            # y codificarlos adecuadamente para la URL y para la firma.
+            sorted_params = sorted(params.items())
+            query_string = urlencode(sorted_params, quote_via=quote_plus)
+            path_for_signing = f"{endpoint}?{query_string}"
+
+        body_string_for_signing = ""
+        # Variables para el cuerpo real de la solicitud con requests
+        actual_body_for_request = None # para data=
+        actual_json_for_request = None # para json=
+
+        if body is not None:
+            if isinstance(body, dict) or isinstance(body, list):
+                # Para cuerpos JSON, serializar de forma compacta, ordenada y sin caracteres no ASCII escapados
+                # para la firma. La librería requests se encargará de la serialización para el envío.
+                body_string_for_signing = json.dumps(body, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+                actual_json_for_request = body # requests usará esto con Content-Type: application/json
+                if "Content-Type" not in headers: # Añadir solo si no está, aunque requests lo haría
+                     headers["Content-Type"] = "application/json; charset=utf-8"
+            elif isinstance(body, str):
+                body_string_for_signing = body
+                actual_body_for_request = body # Se enviará como data=
+                # Si es una cadena JSON, el Content-Type debería ser application/json
+                # Si es form-urlencoded, debería ser application/x-www-form-urlencoded
+                # Por ahora, si es string, el usuario debe gestionar Content-Type si es necesario fuera o pasarlo en headers
+            else:
+                logger.warning(f"Tipo de cuerpo no manejado explícitamente para firma: {type(body)}. Usando str().")
+                body_string_for_signing = str(body)
+                actual_body_for_request = body_string_for_signing
         
-        if add_auth_headers:
-            timestamp = str(int(time.time()))
-            signature = self._create_signature(method, path, request_body_str, timestamp)
-            headers["X-Sign-Date"] = timestamp
-            headers["X-Request-Sign"] = f"dmar ed25519 {signature}" # El prefijo 'dmar ed25519' es un ejemplo, verificar documentación de DMarket
-                                                               # La documentación de DMarket indica HMAC-SHA256, así que el prefijo podría ser diferente o no necesario.
-                                                               # Esta parte necesita verificación con la documentación oficial de DMarket para la firma.
-                                                               # Por ahora, lo simplificaremos y asumiremos que la firma es solo el hexadecimal.
-                                                               # DMarket USA HMAC-SHA256, el formato de X-Request-Sign usualmente es solo la signatura.
-            headers["X-Request-Sign"] = signature # Corregido según la práctica común de HMAC-SHA256
+        if self.secret_key:
+            # Usar el mismo timestamp_iso para la firma
+            signature = self._sign_request(method.upper(), path_for_signing, timestamp_iso, body_string_for_signing)
+            if signature:
+                headers["X-Request-Sign"] = signature
+        else:
+            logger.debug("No se generó firma: DMARKET_SECRET_KEY no configurada.")
+
+        logger.debug(f"Petición: {method.upper()} {full_url}")
+        logger.debug(f"  Firmar Path: {path_for_signing}")
+        logger.debug(f"  Firmar Body: '{body_string_for_signing}'")
+        logger.debug(f"  Firmar Timestamp: {timestamp_iso}")
+        logger.debug(f"  Headers: {headers}")
+        if params: logger.debug(f"  Query Params (para URL): {params}")
+        if actual_json_for_request: logger.debug(f"  JSON Body (para request): {actual_json_for_request}")
+        elif actual_body_for_request: logger.debug(f"  Data Body (para request): {actual_body_for_request}")
 
         try:
-            logger.debug(f"Realizando petición {method} a {url} con params: {params}, data: {data}, headers: {headers}")
-            if method.upper() == "GET":
-                response = self.session.get(url, params=params, headers=headers, timeout=10)
-            elif method.upper() == "POST":
-                response = self.session.post(url, params=params, json=data, headers=headers, timeout=10) # Usar json=data para que requests ponga Content-Type: application/json
-            # Añadir PUT, DELETE, PATCH si son necesarios
-            else:
-                logger.error(f"Método HTTP no soportado: {method}")
-                return {"error": f"Método HTTP no soportado: {method}", "status_code": 0}
-
-            response.raise_for_status()  # Lanza HTTPError para respuestas 4xx/5xx
+            response = requests.request(
+                method.upper(),
+                full_url,
+                params=params, # requests maneja la codificación de params para la URL
+                json=actual_json_for_request, 
+                data=actual_body_for_request,
+                headers=headers,
+                timeout=self.timeout
+            )
+            response.raise_for_status()
             return response.json()
         
         except requests.exceptions.HTTPError as e:
@@ -162,75 +255,6 @@ class DMarketAPI:
         except Exception as e:
             logger.error(f"Error inesperado durante la petición a la API: {e}")
             return {"error": "UnexpectedAPIError", "message": str(e)}
-
-    def get_market_items(self, game_id: str = "csgo", title: str = None, limit: int = 100, offset: int = 0,
-                         order_by: str = "price", order_dir: str = "asc", currency: str = "USD",
-                         price_from: int = None, price_to: int = None, tree_filters: dict = None,
-                         **kwargs) -> dict:
-        """
-        Obtiene ítems del mercado de DMarket utilizando el endpoint /exchange/v1/market/items.
-
-        Este endpoint generalmente no requiere autenticación compleja (firma HMAC),
-        solo la X-Api-Key en las cabeceras (gestionada automáticamente por la sesión).
-
-        Args:
-            game_id (str): ID del juego para filtrar (ej. "a8db" para CS2/CSGO, "dota2", "rust").
-                           **Importante:** Verificar el `gameId` correcto para CS2 en la documentación de DMarket.
-                           Por defecto "csgo" (placeholder común para CS2).
-            title (str, optional): Nombre (título) del ítem para buscar. Por defecto None.
-            limit (int): Número máximo de ítems a devolver. Consultar la documentación de DMarket
-                         para el valor máximo permitido (usualmente 100). Por defecto 100.
-            offset (int): Desplazamiento para la paginación (cuántos ítems saltar). Por defecto 0.
-            order_by (str): Campo por el cual ordenar los resultados (ej. "price", "updated", "name").
-                            Por defecto "price".
-            order_dir (str): Dirección de la ordenación ("asc" para ascendente, "desc" para descendente).
-                             Por defecto "asc".
-            currency (str): Código de moneda para los precios (ej. "USD", "EUR"). Por defecto "USD".
-            price_from (int, optional): Precio mínimo del ítem en la menor unidad de la moneda
-                                        (ej. centavos para USD: 1000 para $10.00). Por defecto None.
-            price_to (int, optional): Precio máximo del ítem en la menor unidad de la moneda.
-                                      Por defecto None.
-            tree_filters (dict, optional): Filtros adicionales basados en el árbol de categorías de DMarket.
-                                         La estructura exacta debe consultarse en la documentación.
-                                         Ejemplo: `{"category_path": "mil-spec_pistol/usp-s"}` o
-                                                  `{"quality": "StatTrak™", "exterior": "Minimal Wear"}`.
-                                         Por defecto None.
-            **kwargs: Otros parámetros de query que la API de DMarket pueda aceptar para este endpoint.
-                      Estos se añadirán directamente a la petición.
-
-        Returns:
-            dict: La respuesta JSON parseada de la API conteniendo los ítems y metadatos de paginación,
-                  o un diccionario de error si la petición falla.
-                  Un resultado exitoso típico incluye claves como "objects", "total", "limit", "offset".
-        """
-        path = "/exchange/v1/market/items"
-        query_params = {
-            "gameId": game_id, # Usar el parámetro game_id aquí
-            "title": title,    # Usar el parámetro title aquí
-            "limit": limit,
-            "offset": str(offset),
-            "orderBy": order_by,
-            "orderDir": order_dir,
-            "currency": currency.upper(),
-        }
-        if price_from is not None:
-            query_params["priceFrom"] = price_from
-        if price_to is not None:
-            query_params["priceTo"] = price_to
-
-        if tree_filters:
-            query_params.update(tree_filters)
-
-        if kwargs:
-            query_params.update(kwargs)
-
-        final_params = {k: v for k, v in query_params.items() if v is not None}
-        response_data = self._request("GET", path, params=final_params)
-
-        if isinstance(response_data, dict) and response_data.get("error") == "HTTPError" and response_data.get("status_code") == 429:
-            logger.warning(f"Rate limit (429) excedido para {path}. Error: {response_data.get('message')}. "
-                           "Considerar implementar una estrategia de backoff exponencial.")
-        return response_data
 
 # Ejemplo de uso (requiere que .env esté configurado con las claves)
 if __name__ == "__main__":

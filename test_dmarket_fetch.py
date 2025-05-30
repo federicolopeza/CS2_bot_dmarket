@@ -102,5 +102,34 @@ def run_test():
 
     logger.info("--- Script de Prueba de DMarket Fetch Finalizado ---")
 
+    # --- Prueba para obtener balance de la cuenta ---
+    logger.info("--- Iniciando Prueba de Obtención de Balance --- ")
+    if not dmarket_api_client.secret_key:
+        logger.warning("No se puede probar la obtención de balance: DMARKET_SECRET_KEY no está configurada en .env")
+    else:
+        try:
+            logger.info("Solicitando balance de la cuenta...")
+            balance_data = dmarket_api_client.get_account_balance()
+
+            if "error" in balance_data:
+                logger.error(f"Error al obtener el balance: {balance_data.get('message', str(balance_data))}")
+                if balance_data.get("status_code"):
+                    logger.error(f"  Status Code: {balance_data['status_code']}")
+                if balance_data.get("response_headers"):
+                    logger.error(f"  Response Headers: {balance_data['response_headers']}") # Puede dar pistas si hay error de firma
+            else:
+                usd_balance_str = balance_data.get("usd", "0")
+                dmc_balance_str = balance_data.get("dmc", "0")
+                # Asumimos que el balance viene en la unidad mínima (centavos para USD)
+                try:
+                    usd_balance = int(usd_balance_str) / 100
+                    dmc_balance = int(dmc_balance_str) # Asumiendo que DMC no tiene decimales o es unidad mínima
+                    logger.info(f"Balance de la cuenta: {usd_balance:.2f} USD, {dmc_balance} DMC")
+                except ValueError:
+                    logger.error(f"No se pudo convertir el balance a números. Respuesta: USD='{usd_balance_str}', DMC='{dmc_balance_str}'")
+        except Exception as e:
+            logger.error(f"Ocurrió una excepción inesperada al obtener el balance: {e}", exc_info=True)
+    logger.info("--- Prueba de Obtención de Balance Finalizada ---")
+
 if __name__ == "__main__":
     run_test() 

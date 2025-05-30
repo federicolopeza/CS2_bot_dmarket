@@ -2,6 +2,7 @@ import logging
 import logging.handlers
 import sys
 import os
+from logging.handlers import TimedRotatingFileHandler
 
 LOG_DIR = "logs"
 LOG_FILENAME = "cs2_trading_bot.log"
@@ -42,6 +43,7 @@ def setup_logger(
     if log_to_console:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(formatter)
+        console_handler.setLevel(logging.DEBUG)
         logger.addHandler(console_handler)
 
     if log_to_file:
@@ -55,13 +57,16 @@ def setup_logger(
         
         log_file_path = os.path.join(LOG_DIR, LOG_FILENAME)
         
-        file_handler = logging.handlers.RotatingFileHandler(
+        file_handler = TimedRotatingFileHandler(
             log_file_path,
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-            encoding='utf-8'
+            when="midnight",        # Rotar a medianoche
+            interval=1,             # Cada día
+            backupCount=7,          # Mantener 7 archivos de backup
+            encoding='utf-8',
+            delay=False
         )
         file_handler.setFormatter(formatter)
+        file_handler.setLevel(logging.DEBUG)
         logger.addHandler(file_handler)
 
     return logger
