@@ -1,0 +1,18 @@
+# Añade aquí tus dependencias de Python
+# Ejemplo:
+# requests==2.25.1
+# pandas>=1.2.0
+
+# Linters y Formateadores
+black
+flake8
+
+# API Requests
+requests
+
+# Gestión de variables de entorno
+python-dotenv
+
+# Testing
+pytest
+pytest-mock
