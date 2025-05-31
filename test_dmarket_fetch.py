@@ -104,7 +104,7 @@ def run_test():
 
     # --- Prueba para obtener balance de la cuenta ---
     logger.info("--- Iniciando Prueba de Obtención de Balance --- ")
-    if not dmarket_api_client.secret_key:
+    if not dmarket_api_client.secret_key_hex:
         logger.warning("No se puede probar la obtención de balance: DMARKET_SECRET_KEY no está configurada en .env")
     else:
         try:

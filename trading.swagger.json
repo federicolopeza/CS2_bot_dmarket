@@ -1,0 +1,4173 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "DMarket trading API",
+    "description": "Welcome to the DMarket Trading API section. Our JSON-based API enables you to manage your DMarket inventory through the methods featured below. In order to use the API, please generate your personal API keys in the account settings.\n\nRequest signature instructions\n\nA valid HTTP request to the trading API must include 3 request headers:\n\n1) X-Api-Key: public key (must be a hex string in lowercase)\nTo get you your own public key, use <https://dmarket.com/> (details : <https://dmarket.com/faq#tradingAPI>)\n\n2) X-Sign-Date: timestamp or current time\nExample: 1605619994. Must not be older than 2 minutes from the request time.\n\n3) X-Request-Sign: signature\n\nThe SHA256 signature scheme is used for signing requests and proving items’ origin and ownership through public-private key pairs. Private and public keys diversification is aimed to provide secure back-to-back communication and the ability to rotate keys in case of security breaches on any side of the integration.\n\nTo make a signature, take the following steps:\n\n1) Build non-signed string formula (HTTP Method) + (Route path + HTTP query params) + (body string) + (timestamp) ). Example:  POST/get-item?Amount=%220.25%22&Limit=%22100%22&Offset=%22150%22&Order=%22desc%22&1605619994)\n\n2) After you’ve created a non-signed string with a default concatenation method, sign it with NACL <https://en.wikipedia.org/wiki/NaCl_(software)> using you secret key.\n3) Encode the result string with hex\n4) Add your signature string to HTTP request headers X-Request-Sign (dmar ed25519 signature)\n\nYou can check out examples on <https://github.com/dmarket/dm-trading-tools>.\n\nDMarket uses rate limiting to control the rate of API requests. Please read FAQ for details <https://dmarket.com/faq#startUsingTradingAPI>.",
+    "version": "v1.0.0-oas3"
+  },
+  "servers": [
+    {
+      "url": "https://api.dmarket.com"
+    }
+  ],
+  "security": [
+    {
+      "BasicJWT": []
+    }
+  ],
+  "paths": {
+    "/account/v1/user": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Getting general user profile information.",
+        "operationId": "getUserByTokenHandler",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/representation.UserAccountResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/representation.UserAccountResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/api.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/api.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/representation.UserAccountResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/account/v1/balance": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Getting the current USD & DMC balance that is available for trading items / buying subscriptions. The response format is in coins (cents for USD, dimoshi for DMC).",
+        "operationId": "getUserBalance",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/representation.UserBalance"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/api.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/api.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/api.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/representation.UserBalance"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/deposit-assets": {
+      "post": {
+        "tags": [
+          "Sell Items"
+        ],
+        "summary": "Transferring items from a 3rd party inventory (e.g. a Steam game) to a Dmarket inventory.",
+        "operationId": "DepositAssets",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/marketplaceDepositAssetsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceDepositAssetsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/deposit-status/{DepositID}": {
+      "get": {
+        "tags": [
+          "Sell Items"
+        ],
+        "summary": "Get information about current deposit transfers.",
+        "operationId": "GetDepositStatus",
+        "parameters": [
+          {
+            "name": "DepositID",
+            "in": "path",
+            "description": "Deposit operation unique identifier.",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceGetDepositStatusResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/user-inventory": {
+      "get": {
+        "tags": [
+          "Inventory/items"
+        ],
+        "summary": "Get user inventory details. Both 3rd party (e.g. Steam) and DMarket inventories are merged into one list. The price amount format is in USD i.e. 0.5 is 50 cents. 'gameId' param values are: CS:GO - a8db, Team Fortress 2 - tf2, Dota 2 - 9a92, Rust - rust.",
+        "operationId": "GetUserInventory",
+        "parameters": [
+          {
+            "name": "GameID",
+            "in": "query",
+            "description": "Game identifier on market.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "BasicFilters.Title",
+            "in": "query",
+            "description": "Filter assets in inventory by asset's title.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "BasicFilters.InMarket",
+            "in": "query",
+            "description": "Show only deposited on market assets.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "boolean",
+              "format": "boolean"
+            }
+          },
+          {
+            "name": "BasicFilters.HasSteamLock",
+            "in": "query",
+            "description": "Filter assets only with Steam trade-lock. Can be applied only for\nSteam-based games.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "boolean",
+              "format": "boolean"
+            }
+          },
+          {
+            "name": "BasicFilters.SteamLockDays",
+            "in": "query",
+            "description": "Filter assets only with Steam trade-lock lock not more than specified\nnumber of days. Can be applied only for Steam-based games.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "BasicFilters.AssetID",
+            "in": "query",
+            "description": "Filter inventory by specified asset ID list.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "SortType",
+            "in": "query",
+            "description": "Sort inventory by one of predefined sort types.\n\n - UserInventorySortTypeDefault: Default sort type for user inventory.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "UserInventorySortTypeDefault",
+              "enum": [
+                "UserInventorySortTypeDefault"
+              ]
+            }
+          },
+          {
+            "name": "Presentation",
+            "in": "query",
+            "description": "Inventory asset presentation type.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "InventoryPresentationSimple",
+              "enum": [
+                "InventoryPresentationSimple",
+                "InventoryPresentationDetailed"
+              ]
+            }
+          },
+          {
+            "name": "Offset",
+            "in": "query",
+            "description": "Offsets items in response.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "description": "Limits number or returned items in response.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
+          },
+          {
+            "name": "Cursor",
+            "in": "query",
+            "description": "Cursor is a next page identifier.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceGetUserInventoryResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/user-inventory/sync": {
+      "post": {
+        "tags": [
+          "Inventory/items"
+        ],
+        "summary": "Updating DMarket inventory details to sync them with data from Steam.",
+        "operationId": "UserInventorySync",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/marketplaceUserInventorySyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceUserInventorySyncResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/user-offers": {
+      "get": {
+        "tags": [
+          "Sell Items"
+        ],
+        "summary": "Get the list of offers of the current user for further management (remove from sale/change price, etc.). The price amount format is in USD i.e. 0.5 is 50 cents. 'gameId' param values are: CS:GO - a8db, Team Fortress 2 - tf2, Dota 2 - 9a92, Rust - rust.",
+        "operationId": "GetUserOffers",
+        "parameters": [
+          {
+            "name": "GameID",
+            "in": "query",
+            "description": "Game identifier on market.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Status",
+            "in": "query",
+            "description": "On sale offer current status.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "OfferStatusDefault",
+              "enum": [
+                "OfferStatusDefault",
+                "OfferStatusActive",
+                "OfferStatusSold",
+                "OfferStatusInactive",
+                "OfferStatusIn_transfer"
+              ]
+            }
+          },
+          {
+            "name": "SortType",
+            "in": "query",
+            "description": "Sort user offers by one of predefined sort types.\n\n - UserOffersSortTypeDefault: Default sort type for user offers.\n - UserOffersSortTypeDateNewestFirst: Sort user offers by date showing newest first.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "UserOffersSortTypeDefault",
+              "enum": [
+                "UserOffersSortTypeDefault",
+                "UserOffersSortTypeDateNewestFirst"
+              ]
+            }
+          },
+          {
+            "name": "BasicFilters.PriceFrom",
+            "in": "query",
+            "description": "Price range filtering.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "BasicFilters.PriceTo",
+            "in": "query",
+            "description": "Price range filtering.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "BasicFilters.Currency",
+            "in": "query",
+            "description": "Currency code to use with price range filter.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Offset",
+            "in": "query",
+            "description": "Offsets items in response.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "description": "Limits number or returned items in response.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
+          },
+          {
+            "name": "Cursor",
+            "in": "query",
+            "description": "Cursor is a next page identifier.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceGetUserOffersResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/user-offers/create": {
+      "post": {
+        "tags": [
+          "Sell Items"
+        ],
+        "summary": "Batch offers creation. As a result, the selected asset is locked and the newly-created offer appears in the Market and on Sale tabs. The price amount format is in USD, i.e. 0.5 is 50 cents.",
+        "operationId": "CreateOffers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/marketplaceCreateOffersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceCreateOffersResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/user-offers/edit": {
+      "post": {
+        "tags": [
+          "Sell Items"
+        ],
+        "summary": "Change the sale price for existing offers. The price amount format is in USD, i.e. 0.5 is 50 cents.",
+        "operationId": "EditOffers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/marketplaceEditOffersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceEditOffersResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/user-offers/closed": {
+      "get": {
+        "tags": [
+          "Sold user items"
+        ],
+        "summary": "Get the list of the user’s closed sell offers. The price amount format is in USD, i.e. 0.5 is 50 cents.",
+        "operationId": "GetUserClosedOffers",
+        "parameters": [
+          {
+            "name": "Offset",
+            "description": "Offsets closed offers in response. Deprecated, use Cursor instead.",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
+          },
+          {
+            "name": "Cursor",
+            "description": "Cursor for pagination. Send empty string to get first page, after that send cursor value from previous response for get next page.",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Limit",
+            "description": "Limits number of returned closed offers in response.",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
+          },
+          {
+            "name": "OrderDir",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "desc",
+                "asc"
+              ],
+              "default": "desc"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceGetUserClosedOffersResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exchange/v1/offers-by-title": {
+      "get": {
+        "tags": [
+          "Buy items"
+        ],
+        "summary": "Get the list of all offers for a single item title. The price amount format is in USD, i.e. 0.5 is 50 cents.",
+        "operationId": "GetOffersByTitle",
+        "parameters": [
+          {
+            "name": "Title",
+            "in": "query",
+            "description": "Item name on market.",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "description": "Limit.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "number",
+              "default": 100
+            }
+          },
+          {
+            "name": "Cursor",
+            "in": "query",
+            "description": "Cursor is next page identifier.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceGetOffersByTitleResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/targets-by-title/{game_id}/{title}": {
+      "get": {
+        "tags": [
+          "Buy items"
+        ],
+        "operationId": "MarketAPI_GetTargetsByTitle",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceGetTargetsByTitleResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "title",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/price-aggregator/v1/aggregated-prices": {
+      "get": {
+        "tags": [
+          "Buy items"
+        ],
+        "summary": "Get the best market prices grouped by item market title.",
+        "operationId": "GetAggregatedPrices",
+        "parameters": [
+          {
+            "name": "Titles",
+            "in": "query",
+            "description": "Items names on market.",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "description": "Limit.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "number",
+              "default": 100
+            }
+          },
+          {
+            "name": "Offset",
+            "in": "query",
+            "description": "Offset.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/aggregatedPrices"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/market-depth": {
+      "get": {
+        "tags": [
+          "Buy items"
+        ],
+        "summary": "Get the full list of active targets and offers by item title. For CS2, targets and offers include information on attributes (meta-data).",
+        "operationId": "MarketAPI_GetMarketDepth",
+        "parameters": [
+          {
+            "name": "gameId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filters",
+            "description": "filters is a list of filters. For example: phase[]=emerald,floatPartValue[]=any,paintSeed=926.",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "aggregatedData",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Full",
+                "Offers",
+                "Orders"
+              ],
+              "default": "Full"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceGetMarketDepthResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/user-targets": {
+      "get": {
+        "tags": [
+          "Buy items"
+        ],
+        "summary": "Get the list of user's targets. 'gameId' param values are: CS:GO - a8db, Team Fortress 2 - tf2, Dota 2 - 9a92, Rust - rust. The price amount format is in USD, i.e. 0.5 is 50 cents.",
+        "operationId": "GetUserTargets",
+        "parameters": [
+          {
+            "name": "GameID",
+            "in": "query",
+            "description": "Game identifier on market.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "BasicFilters.PriceFrom",
+            "in": "query",
+            "description": "Price range filtering.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "BasicFilters.PriceTo",
+            "in": "query",
+            "description": "Price range filtering.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "number",
+              "format": "float"
+            }
+          },
+          {
+            "name": "BasicFilters.Currency",
+            "in": "query",
+            "description": "Currency code to use with price range filter.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "BasicFilters.Title",
+            "in": "query",
+            "description": "Filter user targets by asset's title.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "BasicFilters.TargetID",
+            "in": "query",
+            "description": "Filter by unique target identifier.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "BasicFilters.Status",
+            "in": "query",
+            "description": "Target current status.\n\n - TargetStatusInactive: Target currently inactive.\n - TargetStatusActive: Target currently active and can be matched with complaint offers.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "TargetStatusInactive",
+              "enum": [
+                "TargetStatusInactive",
+                "TargetStatusActive"
+              ]
+            }
+          },
+          {
+            "name": "SortType",
+            "in": "query",
+            "description": "Sort user targets by one of predefined sort types.\n\n - UserTargetsSortTypeDefault: Default sort type for user targets.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "UserTargetsSortTypeDefault",
+              "enum": [
+                "UserTargetsSortTypeDefault"
+              ]
+            }
+          },
+          {
+            "name": "Offset",
+            "in": "query",
+            "description": "Offsets items in response.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "description": "Limits number or returned items in response.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
+          },
+          {
+            "name": "Cursor",
+            "in": "query",
+            "description": "Cursor is next page identifier.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceGetUserTargetsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/user-targets/closed": {
+      "get": {
+        "tags": [
+          "Buy items"
+        ],
+        "summary": "Get the list of the user’s closed targets. The price amount format is in USD, i.e. 0.5 is 50 cents.",
+        "operationId": "GetUserClosedTargets",
+        "parameters": [
+          {
+            "name": "Offset",
+            "in": "query",
+            "description": "Offsets closed targets in response.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
+          },
+          {
+            "name": "Limit",
+            "in": "query",
+            "description": "Limits number of returned closed targets in response.",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "format": "uint64"
+            }
+          },
+          {
+            "name": "OrderDir",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "desc",
+              "enum": [
+                "desc",
+                "asc"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceGetUserClosedTargetsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/user-targets/create": {
+      "post": {
+        "tags": [
+          "Buy items"
+        ],
+        "summary": "The request for target creation requires the following fields: \"GameID\" param (values are: CS:GO - a8db, Team Fortress 2 - tf2, Dota 2 - 9a92, Rust - rust) and array of \"Targets\". The price amount format is in USD, i.e. 0.5 is 50 cents, \"Title\" - full item name.\nAlso, additional attributes (\"Attrs\" field in #/components/schemas/marketplaceCreateTargetRequest) for each item such as \"phase\", \"floatPartValue\" and \"paintSeed\" are available. You can check possible values of additional attributes here.\nLimitations: maximum \"Amount\" value is 100; maximum quantity of targets in one request is 100; maximum number of created targets for one game is individual for each user and can be different for each game. You can contact our customer support team to find out your Target's limit.",
+        "operationId": "CreateTargets",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/marketplaceCreateTargetsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceCreateTargetsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/marketplace-api/v1/user-targets/delete": {
+      "post": {
+        "tags": [
+          "Buy items"
+        ],
+        "summary": "Remove targets.",
+        "operationId": "DeleteTargets",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/marketplaceDeleteTargetsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/marketplaceDeleteTargetsResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/runtimeError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exchange/v1/market/items": {
+      "get": {
+        "tags": [
+          "Sell Items"
+        ],
+        "summary": "Get the list of items that are available for purchase on DMarket. The response format is in coins (cents for USD). 'gameId' param values are: CS:GO - a8db, Team Fortress 2 - tf2, Dota 2 - 9a92, Rust - rust.",
+        "operationId": "getMarketItems",
+        "parameters": [
+          {
+            "name": "gameId",
+            "in": "query",
+            "description": "gameId",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "title",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "limit",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "offset",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "orderBy",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "title"
+            }
+          },
+          {
+            "name": "orderDir",
+            "in": "query",
+            "description": "orderDir",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "desc"
+            }
+          },
+          {
+            "name": "treeFilters",
+            "in": "query",
+            "description": "treeFilters",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "description": "currency",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "priceFrom",
+            "in": "query",
+            "description": "priceFrom",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "priceTo",
+            "in": "query",
+            "description": "priceTo",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "types",
+            "in": "query",
+            "description": "comma separated offer types to filter",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "next page identifier",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.GetItemsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.GetItemsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exchange/v1/offers": {
+      "delete": {
+        "tags": [
+          "Sell Items"
+        ],
+        "summary": "Remove offers from sale. Once an offer is removed, the corresponding item is unlocked and appears in the user's inventory. The offer is also removed from the market. The price amount format is in USD, i.e. 0.5 is 50 cents.",
+        "operationId": "deleteOffers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/entity.ManageOffersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.ManageOffersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.ManageOffersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exchange/v1/offers-buy": {
+      "patch": {
+        "tags": [
+          "Buy items"
+        ],
+        "summary": "Buy the selected offers from the market. As the result of the operation: the offer is removed, the items are transferred to the buyer, the purchase amount is transferred to the seller, the fee is transferred to DMarket. The price amount format is in coins (cents for USD).",
+        "operationId": "buyOffers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/entity.OfferBuyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "No content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.OfferBuyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "No content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.OfferBuyResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exchange/v1/withdraw-assets": {
+      "post": {
+        "tags": [
+          "Inventory/items"
+        ],
+        "summary": "Withdraw assets. 'gameId' param values are: CS:GO - a8db, Team Fortress 2 - tf2, Dota 2 - 9a92, Rust - rust",
+        "operationId": "withdrawAssetsHandler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/entity.WithdrawAssetsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.WithdrawResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad body request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.WithdrawResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exchange/v1/user/items": {
+      "get": {
+        "tags": [
+          "Inventory/items"
+        ],
+        "summary": "Getting user inventory details filtered by a certain game, including DMarket-stored and Steam-stored items. Items for sale are not included. gameId param values are: CS:GO - a8db, Team Fortress 2 - tf2, Dota 2 - 9a92, Rust - rust",
+        "operationId": "getUserItems",
+        "parameters": [
+          {
+            "name": "gameId",
+            "in": "query",
+            "description": "gameId",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "description": "title",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "limit",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "offset",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "description": "orderBy",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "title"
+            }
+          },
+          {
+            "name": "orderDir",
+            "in": "query",
+            "description": "orderDir",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "desc"
+            }
+          },
+          {
+            "name": "treeFilters",
+            "in": "query",
+            "description": "treeFilters",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "description": "currency",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "priceFrom",
+            "in": "query",
+            "description": "priceFrom",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "priceTo",
+            "in": "query",
+            "description": "priceTo",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "classIds",
+            "in": "query",
+            "description": "classIds",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "next page identifier",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.GetItemsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.GetItemsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exchange/v1/customized-fees": {
+      "get": {
+        "tags": [
+          "Inventory/items"
+        ],
+        "summary": "Get the list of items with lower fees. The new list of items each day. 'gameId' param values are: CS:GO - a8db, Team Fortress 2 - tf2, Dota 2 - 9a92, Rust - rust. 'offerType' param values are: 'dmarket', 'p2p'",
+        "operationId": "getCustomizedItems",
+        "parameters": [
+          {
+            "name": "gameId",
+            "in": "query",
+            "description": "enums: CS:GO - a8db, Team Fortress 2 - tf2, Dota 2 - 9a92, Rust - rust",
+            "required": true,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offerType",
+            "in": "query",
+            "description": "enums: \"dmarket\", \"p2p\"",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "string",
+              "default": "dmarket"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "limit",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "offset",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.ListFeeResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/entity.ListFeeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trade-aggregator/v1/last-sales": {
+      "get": {
+        "summary": "Get the item sales history. Up to 12 last months.",
+        "operationId": "Aggregator_GetLastSales",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/tradeGetLastSalesResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/rest.ErrorRepresentation"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "gameId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filters",
+            "description": "filters is a list of filters. For example: exterior[]=factory new,phase[]=phase-1,phase[]=phase-2,float[]=2,float[]=133.",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "txOperationType",
+            "description": "tx_operation_type is a type of transaction to return. Values: \"\", \"Target\", \"Offer\".",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "array"
+              }
+            }
+          },
+          {
+            "name": "limit",
+            "description": "limit is a maximum number of sales to return.\nmin: 1\nmax: 500",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "int64"
+            }
+          }
+        ],
+        "tags": [
+          "Aggregator"
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "GetLastSalesResponseSale": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "string"
+          },
+          "date": {
+            "description": "unix timestamp",
+            "type": "string",
+            "format": "int64"
+          },
+          "txOperationType": {
+            "enum": [
+              "Offer",
+              "Order"
+            ],
+            "type": "string"
+          },
+          "offerAttributes": {
+            "type": "object"
+          },
+          "orderAttributes": {
+            "type": "object"
+          }
+        }
+      },
+      "tradeGetLastSalesResponse": {
+        "type": "object",
+        "properties": {
+          "sales": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GetLastSalesResponseSale"
+            }
+          }
+        }
+      },
+      "entity.WithdrawAssetsRequest": {
+        "required": [
+          "assets",
+          "requestId"
+        ],
+        "properties": {
+          "assets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/entity.Asset"
+            }
+          },
+          "requestId": {
+            "type": "string"
+          }
+        }
+      },
+      "entity.Asset": {
+        "required": [
+          "classId",
+          "gameId",
+          "id"
+        ],
+        "properties": {
+          "classId": {
+            "type": "string"
+          },
+          "gameId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "entity.WithdrawResponse": {
+        "required": [
+          "transferId"
+        ],
+        "properties": {
+          "transferId": {
+            "type": "string"
+          }
+        }
+      },
+      "entity.OfferBuyRequest": {
+        "required": [
+          "offers"
+        ],
+        "properties": {
+          "offers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/entity.OfferPrice"
+            }
+          }
+        }
+      },
+      "entity.OfferBuyResponse": {
+        "required": [
+          "dmOffersFailReason",
+          "orderId",
+          "status",
+          "txId"
+        ],
+        "properties": {
+          "dmOffersFailReason": {
+            "$ref": "#/components/schemas/.dmOffersFailReason"
+          },
+          "dmOffersStatus": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/entity.DMOffersStatus"
+            }
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "p2pOffersStatus": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/entity.P2POffersStatus"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "TxPending",
+              "TxSuccess",
+              "TxFailed"
+            ]
+          },
+          "txId": {
+            "type": "string"
+          }
+        }
+      },
+      ".dmOffersFailReason": {
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        }
+      },
+      "entity.DMOffersStatus": {
+        "required": [
+          "started"
+        ],
+        "properties": {
+          "started": {
+            "type": "boolean"
+          }
+        }
+      },
+      "entity.OfferPrice": {
+        "required": [
+          "offerId",
+          "price",
+          "type"
+        ],
+        "properties": {
+          "offerId": {
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/entity.Money"
+          },
+          "type": {
+            "type": "string",
+            "default": "dmarket",
+            "enum": [
+              "dmarket",
+              "p2p"
+            ]
+          }
+        }
+      },
+      "entity.P2POffersStatus": {
+        "required": [
+          "started"
+        ],
+        "properties": {
+          "started": {
+            "type": "boolean"
+          }
+        }
+      },
+      "entity.ManageOffersRequest": {
+        "required": [
+          "force",
+          "objects"
+        ],
+        "properties": {
+          "force": {
+            "type": "boolean"
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/entity.ManagingOffer"
+            }
+          }
+        }
+      },
+      "entity.ManageOffersResponse": {
+        "required": [
+          "fail",
+          "locked",
+          "success"
+        ],
+        "properties": {
+          "created": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/entity.CreatedOffer"
+            }
+          },
+          "fail": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "locked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "success": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "entity.ManagingOffer": {
+        "required": [
+          "itemId",
+          "offerId",
+          "price"
+        ],
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/entity.Money"
+          }
+        }
+      },
+      "entity.CreatedOffer": {
+        "required": [
+          "assetId",
+          "offerId"
+        ],
+        "properties": {
+          "assetId": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": "string"
+          }
+        }
+      },
+      "entity.Money": {
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "properties": {
+          "amount": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD",
+              "DMC"
+            ]
+          }
+        }
+      },
+      "entity.GetItemsResponse": {
+        "required": [
+          "objects",
+          "total"
+        ],
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "objects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/entity.Item"
+            }
+          },
+          "total": {
+            "$ref": "#/components/schemas/entity.Total"
+          }
+        }
+      },
+      "entity.ListFeeResponse": {
+        "required": [
+          "defaultFee",
+          "reducedFees"
+        ],
+        "properties": {
+          "defaultFee": {
+            "$ref": "#/components/schemas/entity.ListDefaultFee"
+          },
+          "reducedFees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/entity.ListPersonalFee"
+            }
+          }
+        }
+      },
+      "entity.ListPersonalFee": {
+        "required": [
+          "title",
+          "fraction",
+          "minPrice",
+          "maxPrice",
+          "expiresAt"
+        ],
+        "properties": {
+          "expiresAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fraction": {
+            "type": "string"
+          },
+          "maxPrice": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "minPrice": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "entity.ListDefaultFee": {
+        "required": [
+          "minAmount",
+          "fraction"
+        ],
+        "properties": {
+          "fraction": {
+            "type": "string"
+          },
+          "minAmount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "entity.Total": {},
+      "entity.Item": {
+        "required": [
+          "amount",
+          "classId",
+          "createdAt",
+          "description",
+          "discount",
+          "extra",
+          "gameId",
+          "gameType",
+          "image",
+          "inMarket",
+          "instantTargetId",
+          "itemId",
+          "lockStatus",
+          "owner",
+          "ownerDetails",
+          "ownersBlockchainId",
+          "slug",
+          "status",
+          "title",
+          "type"
+        ],
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "classId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "description": {
+            "type": "string"
+          },
+          "discount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "extra": {
+            "$ref": "#/components/schemas/entity.Extra"
+          },
+          "extraDoc": {
+            "type": "string",
+            "enum": [
+              "viewAtSteam",
+              "quality",
+              "exterior",
+              "category",
+              "tradeLock",
+              "tradeLockDuration",
+              "stickers",
+              "itemType",
+              "floatValue",
+              "inspectInGame",
+              "tagName",
+              "hero",
+              "gems",
+              "rarity",
+              "serialNumber",
+              "ability",
+              "videos",
+              "subscribers",
+              "growth",
+              "nameColor",
+              "backgroundColor",
+              "tradable",
+              "withdrawable",
+              "depositable",
+              "offerId",
+              "orderId",
+              "isNew",
+              "groupId",
+              "gameId",
+              "name",
+              "categoryPath",
+              "class",
+              "collection",
+              "grade",
+              "type"
+            ]
+          },
+          "gameId": {
+            "type": "string"
+          },
+          "gameType": {
+            "type": "string",
+            "enum": [
+              "blockchain",
+              "steam"
+            ]
+          },
+          "image": {
+            "type": "string"
+          },
+          "inMarket": {
+            "type": "boolean"
+          },
+          "instantPrice": {
+            "$ref": "#/components/schemas/entity.Prices"
+          },
+          "instantTargetId": {
+            "type": "string"
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "lockStatus": {
+            "type": "boolean"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "ownerDetails": {
+            "$ref": "#/components/schemas/entity.OwnerDetails"
+          },
+          "ownersBlockchainId": {
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/entity.Prices"
+          },
+          "recommendedPrice": {
+            "$ref": "#/components/schemas/entity.Recommendations"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "default",
+              "active",
+              "inactive",
+              "in_transfer",
+              "sold",
+              "recalled",
+              "unavailable",
+              "locked"
+            ]
+          },
+          "suggestedPrice": {
+            "$ref": "#/components/schemas/entity.Prices"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "item",
+              "offer",
+              "target",
+              "class",
+              "airdrop",
+              "sale",
+              "product"
+            ]
+          }
+        }
+      },
+      "entity.Recommendations": {
+        "required": [
+          "d3",
+          "d7",
+          "d7Plus"
+        ],
+        "properties": {
+          "d3": {
+            "$ref": "#/components/schemas/entity.Prices"
+          },
+          "d7": {
+            "$ref": "#/components/schemas/entity.Prices"
+          },
+          "d7Plus": {
+            "$ref": "#/components/schemas/entity.Prices"
+          }
+        }
+      },
+      "entity.OwnerDetails": {
+        "required": [
+          "avatar",
+          "id",
+          "wallet"
+        ],
+        "properties": {
+          "avatar": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "wallet": {
+            "type": "string"
+          }
+        }
+      },
+      "entity.Prices": {
+        "required": [
+          "DMC",
+          "USD"
+        ],
+        "properties": {
+          "DMC": {
+            "type": "string"
+          },
+          "USD": {
+            "type": "string"
+          }
+        }
+      },
+      "entity.Extra": {
+        "required": [
+          "categoryPath",
+          "gameId",
+          "isNew",
+          "name",
+          "tradable",
+          "tradeLockDuration"
+        ],
+        "properties": {
+          "ability": {
+            "type": "string"
+          },
+          "backgroundColor": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "categoryPath": {
+            "type": "string"
+          },
+          "class": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "collection": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exterior": {
+            "type": "string",
+            "enum": [
+              "field-tested",
+              "minimal wear",
+              "battle-scarred",
+              "well-worn",
+              "factory new",
+              "not painted"
+            ]
+          },
+          "floatValue": {
+            "type": "number"
+          },
+          "gameId": {
+            "type": "string"
+          },
+          "gems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/dota2.Gem"
+            }
+          },
+          "grade": {
+            "type": "string"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "growth": {
+            "type": "number"
+          },
+          "hero": {
+            "type": "string"
+          },
+          "inspectInGame": {
+            "type": "string"
+          },
+          "isNew": {
+            "type": "boolean"
+          },
+          "itemType": {
+            "type": "string"
+          },
+          "linkId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "nameColor": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": "string"
+          },
+          "quality": {
+            "type": "string"
+          },
+          "rarity": {
+            "type": "string"
+          },
+          "serialNumber": {
+            "type": "integer"
+          },
+          "stickers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/csgo.Sticker"
+            }
+          },
+          "subscribers": {
+            "type": "integer"
+          },
+          "tagName": {
+            "type": "string"
+          },
+          "tradable": {
+            "type": "boolean"
+          },
+          "tradeLock": {
+            "type": "integer"
+          },
+          "tradeLockDuration": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          },
+          "videos": {
+            "type": "integer"
+          },
+          "viewAtSteam": {
+            "type": "string"
+          },
+          "withdrawable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "csgo.Sticker": {
+        "required": [
+          "image",
+          "name"
+        ],
+        "properties": {
+          "image": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "dota2.Gem": {
+        "required": [
+          "image",
+          "name",
+          "type"
+        ],
+        "properties": {
+          "image": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "rest.ErrorRepresentation": {
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "api.ErrorRepresentation": {
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "validationDetails": {
+            "$ref": "#/components/schemas/api.ErrorRepresentation.validationDetails"
+          }
+        }
+      },
+      "api.ErrorRepresentation.validationDetails": {},
+      "representation.UserAccountResponse": {
+        "required": [
+          "agreementsInfo",
+          "countryCode",
+          "countryCodeFromIP",
+          "email",
+          "features",
+          "ga_client_id",
+          "hasActiveSubscriptions",
+          "hasHistoryEvents",
+          "id",
+          "imageUrl",
+          "isEmailVerified",
+          "isPasswordSet",
+          "level",
+          "linkedGames",
+          "migrated",
+          "publicKey",
+          "regType",
+          "restrictions",
+          "settings",
+          "steamAccount",
+          "twitchAccount",
+          "username"
+        ],
+        "properties": {
+          "agreementsInfo": {
+            "$ref": "#/components/schemas/representation.AgreementsInfo"
+          },
+          "countryCode": {
+            "type": "string"
+          },
+          "countryCodeFromIP": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/representation.Feat"
+            }
+          },
+          "ga_client_id": {
+            "type": "string"
+          },
+          "hasActiveSubscriptions": {
+            "type": "boolean"
+          },
+          "hasHistoryEvents": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "isEmailVerified": {
+            "type": "boolean"
+          },
+          "isPasswordSet": {
+            "type": "boolean"
+          },
+          "level": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "linkedGames": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/representation.LinkedGame"
+            }
+          },
+          "migrated": {
+            "type": "boolean"
+          },
+          "publicKey": {
+            "type": "string"
+          },
+          "regType": {
+            "type": "string",
+            "enum": [
+              "steam",
+              "user"
+            ]
+          },
+          "restrictions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/representation.Restriction"
+            }
+          },
+          "settings": {
+            "$ref": "#/components/schemas/representation.UserAccountSettingsResponse"
+          },
+          "steamAccount": {
+            "$ref": "#/components/schemas/representation.SteamAccount"
+          },
+          "twitchAccount": {
+            "$ref": "#/components/schemas/representation.TwitchAccount"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "representation.AgreementsInfo": {
+        "required": [
+          "isConfirmed",
+          "updated"
+        ],
+        "properties": {
+          "isConfirmed": {
+            "type": "boolean"
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "representation.Feat": {
+        "required": [
+          "enabled",
+          "name"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string",
+            "enum": [
+              "P2P",
+              "P2PToggleVisible",
+              "P2POnboardingSeen"
+            ]
+          }
+        }
+      },
+      "representation.LinkedGame": {
+        "required": [
+          "gameId",
+          "gameUserId",
+          "username"
+        ],
+        "properties": {
+          "gameId": {
+            "type": "string"
+          },
+          "gameUserId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "representation.Restriction": {
+        "required": [
+          "expirationTime",
+          "name"
+        ],
+        "properties": {
+          "expirationTime": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string",
+            "enum": [
+              "P2POfferCreation"
+            ]
+          }
+        }
+      },
+      "representation.UserAccountSettingsResponse": {
+        "required": [
+          "enabledDeviceConfirmation",
+          "isSubscribedToNewsletters",
+          "targetsLimit",
+          "tradingApiToken"
+        ],
+        "properties": {
+          "enabledDeviceConfirmation": {
+            "type": "boolean"
+          },
+          "isSubscribedToNewsletters": {
+            "type": "boolean"
+          },
+          "targetsLimit": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tradingApiToken": {
+            "type": "string"
+          }
+        }
+      },
+      "representation.SteamAccount": {
+        "required": [
+          "apiKey",
+          "apiKeyStatus",
+          "icon",
+          "isProfilePrivate",
+          "level",
+          "steamId",
+          "tradeUrl",
+          "username"
+        ],
+        "properties": {
+          "apiKey": {
+            "type": "string"
+          },
+          "apiKeyStatus": {
+            "type": "string",
+            "enum": [
+              "New",
+              "Verified",
+              "Invalid"
+            ]
+          },
+          "icon": {
+            "type": "string"
+          },
+          "isProfilePrivate": {
+            "type": "boolean"
+          },
+          "level": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "steamId": {
+            "type": "string"
+          },
+          "tradeUrl": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "representation.TwitchAccount": {
+        "required": [
+          "icon",
+          "userId",
+          "username"
+        ],
+        "properties": {
+          "icon": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "representation.UserBalance": {
+        "required": [
+          "dmc",
+          "dmcAvailableToWithdraw",
+          "usd",
+          "usdAvailableToWithdraw"
+        ],
+        "properties": {
+          "dmc": {
+            "type": "string"
+          },
+          "dmcAvailableToWithdraw": {
+            "type": "string"
+          },
+          "usd": {
+            "type": "string"
+          },
+          "usdAvailableToWithdraw": {
+            "type": "string"
+          }
+        }
+      },
+      "GetUserClosedTargetsResponseTrade": {
+        "type": "object",
+        "properties": {
+          "OfferID": {
+            "type": "string"
+          },
+          "TargetID": {
+            "type": "string"
+          },
+          "AssetID": {
+            "type": "string"
+          },
+          "Price": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          },
+          "CurrencyCode": {
+            "type": "string"
+          },
+          "Amount": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "Title": {
+            "type": "string"
+          }
+        }
+      },
+      "marketplaceAsset": {
+        "type": "object",
+        "properties": {
+          "AssetID": {
+            "type": "string",
+            "description": "Unique asset identifier."
+          },
+          "VariantID": {
+            "type": "string",
+            "description": "Unique asset variant identifier."
+          },
+          "Title": {
+            "type": "string",
+            "description": "Asset title."
+          },
+          "ImageURL": {
+            "type": "string",
+            "description": "Asset image url. Additional images can be placed in attributes."
+          },
+          "GameID": {
+            "type": "string",
+            "description": "Game identifier asset belongs to."
+          },
+          "GameType": {
+            "$ref": "#/components/schemas/marketplaceGameType"
+          },
+          "Location": {
+            "$ref": "#/components/schemas/marketplaceAssetLocation"
+          },
+          "Withdrawable": {
+            "type": "boolean",
+            "description": "Determines if asset can be transferred from market to game.",
+            "format": "boolean"
+          },
+          "Depositable": {
+            "type": "boolean",
+            "description": "Determines if asset can be transferred from game to market.",
+            "format": "boolean"
+          },
+          "Tradable": {
+            "type": "boolean",
+            "description": "Determines if asset can be traded on market.",
+            "format": "boolean"
+          },
+          "Attributes": {
+            "type": "array",
+            "description": "Custom asset attributes specific for each game.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceAssetAttribute"
+            }
+          },
+          "Offer": {
+            "$ref": "#/components/schemas/marketplaceAssetOffer"
+          },
+          "MarketPrice": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          },
+          "InstantPrice": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          },
+          "ClassID": {
+            "type": "string",
+            "description": "Deprecated. Unique asset class identifier."
+          }
+        }
+      },
+      "marketplaceAssetAttribute": {
+        "type": "object",
+        "properties": {
+          "Name": {
+            "type": "string",
+            "description": "Attribute name."
+          },
+          "Value": {
+            "type": "string",
+            "description": "Asset attribute."
+          }
+        }
+      },
+      "marketplaceAssetLocation": {
+        "type": "string",
+        "description": " - AssetLocationInGame: Asset in user inventory in game.\n - AssetLocationInMarket: Asset in user inventory in marketplace.\n - AssetLocationInTransfer: Asset currently moving from one state to another.",
+        "default": "AssetLocationInGame",
+        "enum": [
+          "AssetLocationInGame",
+          "AssetLocationInMarket",
+          "AssetLocationInTransfer"
+        ]
+      },
+      "marketplaceAssetMap": {
+        "type": "object",
+        "properties": {
+          "InGameAssetID": {
+            "type": "string",
+            "description": "In-game asset identifier."
+          },
+          "DmarketAssetID": {
+            "type": "string",
+            "description": "In-market asset identifier."
+          }
+        }
+      },
+      "marketplaceAssetOffer": {
+        "type": "object",
+        "properties": {
+          "OfferID": {
+            "type": "string",
+            "description": "Unique offer identifier."
+          },
+          "Price": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          },
+          "Fee": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          },
+          "CreatedDate": {
+            "type": "string",
+            "description": "Offer creation date.",
+            "format": "uint64"
+          }
+        }
+      },
+      "marketplaceCreateOfferRequest": {
+        "type": "object",
+        "properties": {
+          "AssetID": {
+            "type": "string",
+            "description": "Asset ID in user inventory."
+          },
+          "Price": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          }
+        }
+      },
+      "marketplaceCreateOfferResponse": {
+        "type": "object",
+        "properties": {
+          "CreateOffer": {
+            "$ref": "#/components/schemas/marketplaceCreateOfferRequest"
+          },
+          "OfferID": {
+            "type": "string",
+            "description": "Offer identifier in case of successful create."
+          },
+          "Successful": {
+            "type": "boolean",
+            "description": "True if operation was successful.",
+            "format": "boolean"
+          },
+          "Error": {
+            "$ref": "#/components/schemas/marketplaceErrorDetails"
+          }
+        }
+      },
+      "marketplaceCreateOffersRequest": {
+        "type": "object",
+        "properties": {
+          "Offers": {
+            "type": "array",
+            "description": "List of offers to create.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceCreateOfferRequest"
+            }
+          }
+        }
+      },
+      "marketplaceCreateOffersResponse": {
+        "type": "object",
+        "properties": {
+          "Result": {
+            "type": "array",
+            "description": "Results for each sent request.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceCreateOfferResponse"
+            }
+          }
+        }
+      },
+      "marketplaceCreateTargetRequest": {
+        "type": "object",
+        "properties": {
+          "Amount": {
+            "type": "string",
+            "description": "Amount of same assets in one single target entity.",
+            "format": "uint64"
+          },
+          "Price": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          },
+          "Title": {
+            "type": "string",
+            "description": "Title of same assets in one single target entity."
+          },
+          "Attrs": {
+            "type": "object",
+            "format": "object",
+            "properties": {
+              "paintSeed": {
+                "description": "https://dmarket.com/blog/dmarket-api-for-automated-trading/#pattern-values",
+                "type": "integer",
+                "nullable": true
+              },
+              "phase": {
+                "description": "https://dmarket.com/blog/dmarket-api-for-automated-trading/#phase-values",
+                "type": "string",
+                "nullable": true,
+                "enum": [
+                  "",
+                  "phase-1",
+                  "phase-2",
+                  "phase-3",
+                  "phase-4",
+                  "ruby",
+                  "emerald",
+                  "sapphire",
+                  "black-pearl"
+                ]
+              },
+              "floatPartValue": {
+                "description": "https://dmarket.com/blog/dmarket-api-for-automated-trading/#float-values",
+                "type": "string",
+                "nullable": true,
+                "enum": [
+                  "",
+                  "FN-0",
+                  "FN-1",
+                  "FN-2",
+                  "FN-3",
+                  "FN-4",
+                  "FN-5",
+                  "FN-6",
+                  "MW-0",
+                  "MW-1",
+                  "MW-2",
+                  "MW-3",
+                  "MW-4",
+                  "FT-0",
+                  "FT-1",
+                  "FT-2",
+                  "FT-3",
+                  "FT-4",
+                  "WW-0",
+                  "WW-1",
+                  "WW-2",
+                  "WW-3",
+                  "WW-4",
+                  "BS-0",
+                  "BS-1",
+                  "BS-2",
+                  "BS-3",
+                  "BS-4"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "marketplaceCreateTargetResponse": {
+        "type": "object",
+        "properties": {
+          "CreateTarget": {
+            "$ref": "#/components/schemas/marketplaceCreateTargetRequest"
+          },
+          "TargetID": {
+            "type": "string",
+            "description": "Target identifier in case of successful create."
+          },
+          "Successful": {
+            "type": "boolean",
+            "description": "True if operation was successful.",
+            "format": "boolean"
+          },
+          "Error": {
+            "$ref": "#/components/schemas/marketplaceErrorDetails"
+          }
+        }
+      },
+      "marketplaceCreateTargetsRequest": {
+        "type": "object",
+        "properties": {
+          "GameID": {
+            "type": "string",
+            "description": "GameID of same assets in one single target entity."
+          },
+          "Targets": {
+            "type": "array",
+            "description": "List of targets to create.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceCreateTargetRequest"
+            }
+          }
+        }
+      },
+      "marketplaceCreateTargetsResponse": {
+        "type": "object",
+        "properties": {
+          "Result": {
+            "type": "array",
+            "description": "Results for each sent request.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceCreateTargetResponse"
+            }
+          }
+        }
+      },
+      "marketplaceDeleteTargetRequest": {
+        "type": "object",
+        "properties": {
+          "TargetID": {
+            "type": "string",
+            "description": "Unique target identifier."
+          }
+        }
+      },
+      "marketplaceDeleteTargetResponse": {
+        "type": "object",
+        "properties": {
+          "DeleteTarget": {
+            "$ref": "#/components/schemas/marketplaceDeleteTargetRequest"
+          },
+          "Successful": {
+            "type": "boolean",
+            "description": "True if operation was successful.",
+            "format": "boolean"
+          },
+          "Error": {
+            "$ref": "#/components/schemas/marketplaceErrorDetails"
+          }
+        }
+      },
+      "marketplaceDeleteTargetsRequest": {
+        "type": "object",
+        "properties": {
+          "Targets": {
+            "type": "array",
+            "description": "Targets list to delete.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceDeleteTargetRequest"
+            }
+          }
+        }
+      },
+      "marketplaceDeleteTargetsResponse": {
+        "type": "object",
+        "properties": {
+          "Result": {
+            "type": "array",
+            "description": "Results for each sent request.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceDeleteTargetResponse"
+            }
+          }
+        }
+      },
+      "marketplaceDepositAssetsRequest": {
+        "type": "object",
+        "properties": {
+          "AssetID": {
+            "type": "array",
+            "description": "List of asset id to deposit.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "marketplaceDepositAssetsResponse": {
+        "type": "object",
+        "properties": {
+          "DepositID": {
+            "type": "string",
+            "description": "Deposit operation unique identifier."
+          }
+        }
+      },
+      "marketplaceEditOfferRequest": {
+        "type": "object",
+        "properties": {
+          "OfferID": {
+            "type": "string",
+            "description": "Offer identifier (one of)."
+          },
+          "AssetID": {
+            "type": "string",
+            "description": "Asset identifier (one of)."
+          },
+          "Price": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          }
+        }
+      },
+      "marketplaceEditOfferResponse": {
+        "type": "object",
+        "properties": {
+          "EditOffer": {
+            "$ref": "#/components/schemas/marketplaceEditOfferRequest"
+          },
+          "Successful": {
+            "type": "boolean",
+            "description": "True if operation was successful.",
+            "format": "boolean"
+          },
+          "Error": {
+            "$ref": "#/components/schemas/marketplaceErrorDetails"
+          },
+          "NewOfferID": {
+            "title": "On success creates new offer id",
+            "type": "string"
+          }
+        }
+      },
+      "marketplaceEditOffersRequest": {
+        "type": "object",
+        "properties": {
+          "Offers": {
+            "type": "array",
+            "description": "List of offers to edit.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceEditOfferRequest"
+            }
+          }
+        }
+      },
+      "marketplaceEditOffersResponse": {
+        "type": "object",
+        "properties": {
+          "Result": {
+            "type": "array",
+            "description": "Results for each sent request.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceEditOfferResponse"
+            }
+          }
+        }
+      },
+      "marketplaceErrorCodes": {
+        "type": "string",
+        "description": "http code 400(Bad Request):\n  * `NotEnoughBalance` - Not enough balance\n  * `InvalidAPIKey` - InvalidAPIKey\n",
+        "default": "Internal",
+        "enum": [
+          "Internal",
+          "Unauthorized",
+          "NotEnoughBalance",
+          "ActiveSubscriptionExists",
+          "InsufficientFunds",
+          "SubscriptionPurchaseIsBlocked",
+          "RecaptchaRequired",
+          "WrongRecaptcha",
+          "BadCredentials",
+          "EmailIsNotVerified",
+          "InvalidOTPCode",
+          "OTPDisabled",
+          "OTPSessionExpired",
+          "TitleRequired",
+          "InvalidPeriod",
+          "BadRequest",
+          "GameIDRequired",
+          "MFAAlreadyEnabled",
+          "DepositTransferNotFound",
+          "WithdrawTransferNotFound",
+          "InventoryItemsNotFound",
+          "UnsupportedAuthProvider",
+          "FieldCouldNotBeAnEmpty",
+          "TokenNotValid",
+          "InvalidTransferAssetCount",
+          "GameIsNotLinkedToYourAccount",
+          "DuplicatedAssets",
+          "TransferNotFound",
+          "InvalidUUID",
+          "UnsupportedPaymentType",
+          "UnsupportedCurrency",
+          "GetReturnURL",
+          "UpdatePaymentDepositTx",
+          "DepositTxNoFound",
+          "WithdrawTxNoFound",
+          "KYCVerificationFailed",
+          "PaymentMethodNotFound",
+          "KycError",
+          "TxNotFound",
+          "InternalServerError",
+          "AttemptsLimitExceeded",
+          "InvalidCountryCode",
+          "Banned",
+          "InvalidReturnUrl",
+          "InvalidConfirmationHash",
+          "IPConfirmationMismatch",
+          "EmailNotValid",
+          "AccountDepositThresholdLimitExceeded",
+          "InvalidAmount",
+          "NoActiveIPConfirmations",
+          "UnsupportedDevice",
+          "AccountNotRegisteredYet",
+          "TokenDoesNotExists",
+          "SameEmailExists",
+          "UnsupportedInventorySyncType",
+          "InvalidTokenizationID",
+          "TokenizationNotFound",
+          "TokenizationNotEditable",
+          "TokenizationFailed",
+          "InvalidPaymentMethod",
+          "MaxTokenizationsExceeded",
+          "DeprecatedArguments",
+          "PhoneNumberRequired",
+          "InvalidPhoneNumber",
+          "InvalidSignature",
+          "InvalidAPIKey",
+          "APIKeyDisabled"
+        ]
+      },
+      "marketplaceErrorDetails": {
+        "type": "object",
+        "properties": {
+          "Code": {
+            "$ref": "#/components/schemas/marketplaceErrorCodes"
+          },
+          "Message": {
+            "type": "string",
+            "description": "Human readable error message."
+          }
+        }
+      },
+      "marketplaceGameType": {
+        "type": "string",
+        "description": " - GameTypeBlockchain: Blockchain-based game.\n - GameTypeSteam: Steam-based game.",
+        "default": "GameTypeBlockchain",
+        "enum": [
+          "GameTypeBlockchain",
+          "GameTypeSteam"
+        ]
+      },
+      "marketplaceGames": {
+        "type": "string",
+        "default": "UnknownGame",
+        "enum": [
+          "UnknownGame",
+          "CSGO",
+          "Dota2",
+          "TF2",
+          "LifeBeyond",
+          "Rust"
+        ]
+      },
+      "marketplaceGetDepositStatusResponse": {
+        "type": "object",
+        "properties": {
+          "DepositID": {
+            "type": "string",
+            "description": "Deposit operation unique identifier."
+          },
+          "AssetID": {
+            "type": "array",
+            "description": "Initial assets list requested to deposit.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "Status": {
+            "$ref": "#/components/schemas/marketplaceTransferStatus"
+          },
+          "Error": {
+            "type": "string",
+            "description": "Error details in case of failed deposit operation."
+          },
+          "Assets": {
+            "type": "array",
+            "description": "Map of in-game asset id from request and new in-market asset ids after\ndeposit.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceAssetMap"
+            }
+          },
+          "SteamDepositInfo": {
+            "$ref": "#/components/schemas/marketplaceSteamDepositInfo"
+          }
+        }
+      },
+      "marketplaceGetUserClosedTargetsResponse": {
+        "type": "object",
+        "properties": {
+          "Trades": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GetUserClosedTargetsResponseTrade"
+            }
+          },
+          "Total": {
+            "type": "string",
+            "format": "uint64"
+          }
+        }
+      },
+      "marketplaceGetUserInventoryResponse": {
+        "type": "object",
+        "properties": {
+          "Items": {
+            "type": "array",
+            "description": "Assets list.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceAsset"
+            }
+          },
+          "Total": {
+            "type": "string",
+            "description": "Total number of items that complain with provided filter.",
+            "format": "uint64"
+          },
+          "Cursor": {
+            "type": "string",
+            "description": "Cursor is a next page identifier."
+          }
+        }
+      },
+      "marketplaceGetUserOffersResponse": {
+        "type": "object",
+        "properties": {
+          "Items": {
+            "type": "array",
+            "description": "User on sale assets.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceAsset"
+            }
+          },
+          "Total": {
+            "type": "string",
+            "description": "Total number of items that complain with provided filter.",
+            "format": "uint64"
+          },
+          "Cursor": {
+            "type": "string",
+            "description": "Cursor is a next page identifier."
+          }
+        }
+      },
+      "marketplaceGetUserClosedOffersResponse": {
+        "type": "object",
+        "properties": {
+          "Trades": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceGetUserClosedOffersResponseTrade"
+            }
+          },
+          "Total": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "Cursor": {
+            "type": "string",
+            "description": "Cursor is a next page identifier."
+          }
+        }
+      },
+      "marketplaceGetUserClosedOffersResponseTrade": {
+        "type": "object",
+        "properties": {
+          "OfferID": {
+            "type": "string"
+          },
+          "TargetID": {
+            "type": "string"
+          },
+          "AssetID": {
+            "type": "string"
+          },
+          "Price": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          },
+          "CurrencyCode": {
+            "type": "string"
+          },
+          "Amount": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "Title": {
+            "type": "string"
+          },
+          "Fee": {
+            "$ref": "#/components/schemas/TradeFeeData"
+          },
+          "OfferCreatedAt": {
+            "type": "string",
+            "format": "int64"
+          },
+          "OfferClosedAt": {
+            "type": "string",
+            "format": "int64"
+          }
+        }
+      },
+      "TradeFeeData": {
+        "type": "object",
+        "properties": {
+          "Amount": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          },
+          "Percent": {
+            "type": "string"
+          },
+          "IsPersonal": {
+            "type": "boolean",
+            "format": "boolean"
+          }
+        }
+      },
+      "marketplaceMoney": {
+        "type": "object",
+        "properties": {
+          "Currency": {
+            "type": "string",
+            "description": "Currency code."
+          },
+          "Amount": {
+            "type": "number",
+            "format": "float",
+            "description": "Money amount."
+          }
+        }
+      },
+      "marketplaceGetUserTargetsResponse": {
+        "type": "object",
+        "properties": {
+          "Items": {
+            "type": "array",
+            "description": "User targets list.",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceTarget"
+            }
+          },
+          "Total": {
+            "type": "string",
+            "description": "Total number of items that complain with provided filters.",
+            "format": "uint64"
+          },
+          "Cursor": {
+            "type": "string",
+            "description": "Cursor is next page identifier."
+          }
+        }
+      },
+      "marketplaceGetOffersByTitleResponse": {
+        "type": "object",
+        "properties": {
+          "objects": {
+            "type": "array",
+            "description": "User targets list.",
+            "items": {
+              "$ref": "#/components/schemas/entity.Item"
+            }
+          },
+          "total": {
+            "$ref": "#/components/schemas/entity.Total"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Cursor is next page identifier."
+          }
+        }
+      },
+      "marketplaceGetTargetsByTitleResponse": {
+        "type": "object",
+        "properties": {
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GetTargetsByTitleResponseOrder"
+            }
+          }
+        }
+      },
+      "GetTargetsByTitleResponseOrder": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "price": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "attributes": {
+            "type": "object"
+          }
+        }
+      },
+      "marketplaceInventorySyncType": {
+        "type": "string",
+        "default": "UnknownSyncType",
+        "enum": [
+          "UnknownSyncType",
+          "Inventory"
+        ]
+      },
+      "marketplaceSteamDepositInfo": {
+        "type": "object",
+        "properties": {
+          "TradeOfferID": {
+            "type": "string",
+            "description": "Steam trade offer id."
+          },
+          "Message": {
+            "type": "string",
+            "description": "Custom trade message."
+          }
+        }
+      },
+      "marketplaceTarget": {
+        "type": "object",
+        "properties": {
+          "TargetID": {
+            "type": "string",
+            "description": "Target unique identifier."
+          },
+          "Title": {
+            "type": "string",
+            "description": "Targeting asset's title."
+          },
+          "Amount": {
+            "type": "string",
+            "description": "Amount of same assets in one single target entity.",
+            "format": "uint64"
+          },
+          "Status": {
+            "$ref": "#/components/schemas/marketplaceTargetStatus"
+          },
+          "GameID": {
+            "type": "string",
+            "description": "Game identifier asset belongs to."
+          },
+          "GameType": {
+            "$ref": "#/components/schemas/marketplaceGameType"
+          },
+          "Attributes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/marketplaceAssetAttribute"
+            }
+          },
+          "Price": {
+            "$ref": "#/components/schemas/marketplaceMoney"
+          }
+        }
+      },
+      "marketplaceTargetStatus": {
+        "type": "string",
+        "description": " - TargetStatusInactive: Target currently inactive.\n - TargetStatusActive: Target currently active and can be matched with complaint offers.",
+        "default": "TargetStatusInactive",
+        "enum": [
+          "TargetStatusInactive",
+          "TargetStatusActive"
+        ]
+      },
+      "marketplaceTransferStatus": {
+        "type": "string",
+        "default": "TransferStatusPending",
+        "enum": [
+          "TransferStatusPending",
+          "TransferStatusCreated",
+          "TransferStatusSuccess",
+          "TransferStatusFailedToCreate",
+          "TransferStatusError",
+          "TransferStatusOnHold"
+        ]
+      },
+      "marketplaceUserInventorySyncRequest": {
+        "type": "object",
+        "properties": {
+          "Type": {
+            "$ref": "#/components/schemas/marketplaceInventorySyncType"
+          },
+          "GameID": {
+            "$ref": "#/components/schemas/marketplaceGames"
+          }
+        }
+      },
+      "marketplaceUserInventorySyncResponse": {
+        "type": "object"
+      },
+      "protobufAny": {
+        "type": "object",
+        "properties": {
+          "type_url": {
+            "type": "string",
+            "description": "A URL/resource name that uniquely identifies the type of the serialized\nprotocol buffer message. This string must contain at least\none \"/\" character. The last segment of the URL's path must represent\nthe fully qualified name of the type (as in\n`path/google.protobuf.Duration`). The name should be in a canonical form\n(e.g., leading \".\" is not accepted).\n\nIn practice, teams usually precompile into the binary all types that they\nexpect it to use in the context of Any. However, for URLs which use the\nscheme `http`, `https`, or no scheme, one can optionally set up a type\nserver that maps type URLs to message definitions as follows:\n\n* If no scheme is provided, `https` is assumed.\n* An HTTP GET on the URL must yield a [google.protobuf.Type][]\n  value in binary format, or produce an error.\n* Applications are allowed to cache lookup results based on the\n  URL, or have them precompiled into a binary to avoid any\n  lookup. Therefore, binary compatibility needs to be preserved\n  on changes to types. (Use versioned type names to manage\n  breaking changes.)\n\nNote: this functionality is not currently available in the official\nprotobuf release, and it is not used for type URLs beginning with\ntype.googleapis.com.\n\nSchemes other than `http`, `https` (or the empty scheme) might be\nused with implementation specific semantics."
+          },
+          "value": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+            "type": "string",
+            "description": "Must be a valid serialized protocol buffer of the above specified type.",
+            "format": "byte"
+          }
+        },
+        "description": "`Any` contains an arbitrary serialized protocol buffer message along with a\nURL that describes the type of the serialized message.\n\nProtobuf library provides support to pack/unpack Any values in the form\nof utility functions or additional generated methods of the Any type.\n\nExample 1: Pack and unpack a message in C++.\n\n    Foo foo = ...;\n    Any any;\n    any.PackFrom(foo);\n    ...\n    if (any.UnpackTo(&foo)) {\n      ...\n    }\n\nExample 2: Pack and unpack a message in Java.\n\n    Foo foo = ...;\n    Any any = Any.pack(foo);\n    ...\n    if (any.is(Foo.class)) {\n      foo = any.unpack(Foo.class);\n    }\n\n Example 3: Pack and unpack a message in Python.\n\n    foo = Foo(...)\n    any = Any()\n    any.Pack(foo)\n    ...\n    if any.Is(Foo.DESCRIPTOR):\n      any.Unpack(foo)\n      ...\n\n Example 4: Pack and unpack a message in Go\n\n     foo := &pb.Foo{...}\n     any, err := ptypes.MarshalAny(foo)\n     ...\n     foo := &pb.Foo{}\n     if err := ptypes.UnmarshalAny(any, foo); err != nil {\n       ...\n     }\n\nThe pack methods provided by protobuf library will by default use\n'type.googleapis.com/full.type.name' as the type URL and the unpack\nmethods only use the fully qualified type name after the last '/'\nin the type URL, for example \"foo.bar.com/x/y.z\" will yield type\nname \"y.z\".\n\n\nJSON\n====\nThe JSON representation of an `Any` value uses the regular\nrepresentation of the deserialized, embedded message, with an\nadditional field `@type` which contains the type URL. Example:\n\n    package google.profile;\n    message Person {\n      string first_name = 1;\n      string last_name = 2;\n    }\n\n    {\n      \"@type\": \"type.googleapis.com/google.profile.Person\",\n      \"firstName\": <string>,\n      \"lastName\": <string>\n    }\n\nIf the embedded message type is well-known and has a custom JSON\nrepresentation, that representation will be embedded adding a field\n`value` which holds the custom JSON in addition to the `@type`\nfield. Example (for message [google.protobuf.Duration][]):\n\n    {\n      \"@type\": \"type.googleapis.com/google.protobuf.Duration\",\n      \"value\": \"1.212s\"\n    }\n    "
+      },
+      "aggregatedPrices": {
+        "type": "object",
+        "properties": {
+          "Error": {
+            "type": "string"
+          },
+          "Total": {
+            "type": "number"
+          },
+          "AggregatedTitles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/aggregatedPrice"
+            }
+          }
+        }
+      },
+      "aggregatedPrice": {
+        "type": "object",
+        "properties": {
+          "MarketHashName": {
+            "type": "string"
+          },
+          "Offers": {
+            "$ref": "#/components/schemas/bestPrice"
+          },
+          "Orders": {
+            "$ref": "#/components/schemas/bestPrice"
+          }
+        }
+      },
+      "marketplaceGetMarketDepthResponse": {
+        "type": "object",
+        "properties": {
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GetMarketDepthResponseMarketInfo"
+            }
+          },
+          "offers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GetMarketDepthResponseMarketInfo"
+            }
+          }
+        }
+      },
+      "GetMarketDepthRequestResponseDataFilter": {
+        "type": "string",
+        "enum": [
+          "Full",
+          "Offers",
+          "Orders"
+        ],
+        "default": "Full"
+      },
+      "GetMarketDepthResponseMarketInfo": {
+        "type": "object",
+        "properties": {
+          "price": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "bestPrice": {
+        "type": "object",
+        "properties": {
+          "BestPrice": {
+            "type": "string"
+          },
+          "Count": {
+            "type": "number"
+          }
+        }
+      },
+      "runtimeError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/protobufAny"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "BasicJWT": {
+        "type": "apiKey",
+        "name": "Authorization",
+        "in": "header"
+      }
+    }
+  }
+}

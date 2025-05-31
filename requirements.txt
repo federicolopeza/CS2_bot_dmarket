@@ -16,3 +16,4 @@ python-dotenv
 # Testing
 pytest
 pytest-mock
+pynacl
