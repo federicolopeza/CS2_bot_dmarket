@@ -4,6 +4,7 @@ import pytest
 import os
 from unittest.mock import MagicMock, patch
 import time # Añadido para test_make_request
+from cryptography.exceptions import InvalidSignature
 
 # Asegúrate de que el path al directorio raíz del proyecto esté en sys.path
 # para que se puedan importar los módulos del proyecto correctamente.
@@ -14,7 +15,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from core.dmarket_connector import DMarketAPI, SIGNATURE_PREFIX
-from utils.logger import logger # Descomentar si necesitas usar el logger en tests
+# from utils.logger import logger # Descomentar si necesitas usar el logger en tests
 
 
 # Clave secreta de ejemplo válida (64 bytes como hexadecimal de 128 caracteres)
