@@ -1,6 +1,6 @@
-# Seguimiento del Proyecto: Bot de Trading de Skins CS2 con DMarket y PriceEmpire
+# Seguimiento del Proyecto: Bot de Trading de Skins CS2 con DMarket
 
-Este documento sigue el progreso del desarrollo del "Sistema Integral de Trading de Skins de CS2 con DMarket y PriceEmpire".
+Este documento sigue el progreso del desarrollo del "Sistema Integral de Trading de Skins de CS2 con DMarket".
 
 ## Leyenda de Estado
 - [ ] Pendiente
@@ -23,8 +23,8 @@ Este documento sigue el progreso del desarrollo del "Sistema Integral de Trading
     - **Estado:** `Completado`
     - **Notas:** Herramientas instaladas y archivos de configuración creados.
 
-## Fase 1: Fundación del Proyecto y Conexión con APIs (DMarket y PriceEmpire)
-**Objetivo:** Establecer la comunicación con las APIs de DMarket y PriceEmpire, y el logging.
+## Fase 1: Fundación del Proyecto y Conexión con API DMarket
+**Objetivo:** Establecer la comunicación con la API de DMarket y el logging.
 
 - **[X] Tarea: Implementación del Módulo de Logging (`utils/logger.py`)**
     - Descripción: Logging estructurado, niveles, salida a consola y archivo.
@@ -44,20 +44,6 @@ Este documento sigue el progreso del desarrollo del "Sistema Integral de Trading
         *   [X] Confirmar `game_id` para CS2 ("a8db").
     - **Notas:** Conexión y autenticación con DMarket API funcionales.
 
-- **[ ] Tarea: Desarrollo del Conector de API de PriceEmpire (`core/priceempire_connector.py`)**
-    - Descripción: Gestión segura de clave API, peticiones GET a PriceEmpire (precios, historial, metas), manejo de errores y rate limits.
-    - Esfuerzo: Alto.
-    - **Estado:** `[A] Requiere Acción del Usuario - Implementación inicial completada. Pruebas fallan por error 401 (Unauthorized), indicando que la API Key no tiene la suscripción necesaria para los endpoints. Es necesario verificar el plan de PriceEmpire.`
-    - **Subtareas:**
-        *   [X] Cargar clave API de PriceEmpire desde `.env`.
-        *   [X] Implementar método para `/v4/paid/items/prices`.
-        *   [X] Implementar método para `/v3/items/prices/history`.
-        *   [X] Implementar método para `/v4/paid/items/metas`.
-        *   [X] Manejo básico de errores y logging para PriceEmpire.
-        *   [A] Verificar suscripción de PriceEmpire API para habilitar acceso a endpoints.
-        *   [ ] Probar exhaustivamente el conector `core/priceempire_connector.py` (una vez resuelto el acceso).
-        *   [ ] Investigar y documentar `rate limits` de PriceEmpire API.
-
 - **[X] Tarea: Script de Prueba Inicial para DMarket (`test_dmarket_fetch.py`)**
     - Descripción: Script para obtener y mostrar precios de DMarket usando el conector.
     - Esfuerzo: Medio.
@@ -68,37 +54,70 @@ Este documento sigue el progreso del desarrollo del "Sistema Integral de Trading
     - Esfuerzo: Medio.
     - **Estado:** `[X] Completado - Pruebas actualizadas para Ed25519 y cambios internos. Todas las pruebas pasan.`
 
-- **[ ] Tarea: Script de Prueba Inicial para PriceEmpire (ej. `test_priceempire_fetch.py`)**
-    - Descripción: Script para obtener y mostrar datos de PriceEmpire usando el conector.
-    - Esfuerzo: Medio.
-    - **Estado:** `Pendiente`
-
-- **[ ] Tarea: Pruebas Unitarias Iniciales para `priceempire_connector.py`**
-    - Descripción: Pruebas unitarias para `priceempire_connector.py`.
-    - Esfuerzo: Medio.
-    - **Estado:** `Pendiente`
-
 ## Fase 2: Consolidación de Datos, Almacenamiento y Normalización
-**Objetivo:** Recolectar datos de DMarket y PriceEmpire, almacenarlos y normalizarlos. Scraping de SCM es secundario.
+**Objetivo:** Recolectar datos de DMarket, almacenarlos y normalizarlos. Scraping de SCM es secundario.
 
 - **[ ] Tarea: (Opcional/Secundario) Scraper para Steam Community Market (`core/market_scrapers.py`)**
     - Descripción: Extraer datos de SCM complementarios a las APIs.
     - Esfuerzo: Alto.
-- **[ ] Tarea: Gestor de Datos (`core/data_manager.py`) con SQLite.**
-    - Descripción: Esquemas SQLAlchemy (`SkinsMaestra`, `PreciosHistoricos` con `fuente_api`), inicializar BD, insertar/actualizar datos de DMarket y PriceEmpire.
+- **[P] Tarea: Gestor de Datos (`core/data_manager.py`) con SQLite.**
+    - Descripción: Esquemas SQLAlchemy (`SkinsMaestra`, `PreciosHistoricos` con `fuente_api`), inicializar BD, insertar/actualizar datos de DMarket.
     - Esfuerzo: Alto.
+    - **Estado:** `En Progreso`
+    - **Notas:** 
+        *   Definidos modelos `SkinsMaestra` y `PreciosHistoricos` en `core/data_manager.py`.
+        *   Implementada función `init_db()` para crear tablas.
+        *   Implementada función `get_db()` para obtener sesión de BD.
+        *   Implementada función `add_or_update_skin()`.
+        *   Implementada función `add_price_record()`.
+        *   Añadido `SQLAlchemy` a `requirements.txt`.
+        *   Pruebas unitarias iniciales para `data_manager.py` implementadas y superadas.
+        *   Corregidas advertencias de obsolescencia de `declarative_base` y `datetime.utcnow`.
+    - **Subtareas Pendientes:**
+        *   [X] Pruebas unitarias para `data_manager.py`.
+        *   [X] Corregir advertencias de obsolescencia en `data_manager.py`.
+        *   [X] Implementar funciones de consulta (ej. obtener skin por nombre, obtener precios recientes).
+
 - **[ ] Tarea: Funciones de Normalización de Datos (`utils/helpers.py` o `core/data_manager.py`)**
     - Descripción: Normalizar nombres, convertir precios a USD, estandarizar fechas/horas.
     - Esfuerzo: Medio.
+    - **Estado:** `[X] Completado`
+    - **Notas:**
+        *   Creado archivo `utils/helpers.py`.
+        *   Implementada función `normalize_price_to_usd()` (solo soporta USD, suficiente para DMarket actual).
+        *   Implementada función `normalize_skin_name()` (limpieza básica de espacios, suficiente por ahora).
+        *   Manejo de fechas/horas UTC ya implementado en `data_manager.py`.
+    - **Subtareas Pendientes:**
+        *   [X] Pruebas unitarias para `utils/helpers.py`.
+        *   [X] Investigar y, si es necesario, implementar lógica de conversión de moneda real (requiere fuente de tasas de cambio). **Nota:** No se requiere conversión activa ya que DMarket provee precios en USD y es la única fuente actual.
+        *   [X] Investigar y, si es necesario, implementar normalización de nombres más avanzada. **Nota:** Normalización actual (`strip()`) considerada suficiente por el momento.
+
 - **[ ] Tarea: Script de Población de Base de Datos (`populate_db.py`)**
     - Descripción: Usar conectores y `data_manager` para obtener y almacenar datos.
     - Esfuerzo: Medio.
+    - **Estado:** `[X] Completado (Funcionalidad básica de población con datos reales implementada)`
+    - **Notas:**
+        *   Creada estructura inicial de `populate_db.py`.
+        *   Incluye carga de API keys (corregida la carga de `DMARKET_PUBLIC_KEY`).
+        *   Implementado flujo para obtener ítems de DMarket, procesarlos y guardarlos en BD usando `data_manager` y `helpers`.
+        *   Llama a `init_db()` antes de poblar.
+        *   Actualizado para usar la estructura de respuesta real de la API de DMarket y nombres de campos correctos.
+        *   Script obtiene y guarda exitosamente un número limitado de ítems y sus precios.
+        *   Se añadieron contadores de resumen para el procesamiento de ítems y errores/advertencias.
+        *   Se definió `DEFAULT_GAME_ID` como constante para facilitar cambios futuros.
+    - **Subtareas Pendientes:**
+        *   [X] Verificar/Implementar `DMarketConnector.get_market_items()` y su estructura de respuesta.
+        *   [X] Ajustar la extracción y mapeo de datos en `populate_db.py` según la respuesta real de la API.
+        *   [X] Confirmar formato de precios de DMarket (ej. centavos, moneda) y ajustar normalización.
+        *   [X] Pruebas para `populate_db.py` (pruebas de integración implementadas y superadas para varios escenarios, incluyendo paginación, errores de API y datos de ítems inválidos).
+        *   [X] Considerar la gestión de errores más robusta para datos inesperados de la API. **Nota:** Implementados contadores de resumen para errores y advertencias.
+        *   [X] Implementar lógica para manejar el `game_id` de forma más flexible si se añaden otros juegos. **Nota:** Se utiliza una constante `DEFAULT_GAME_ID` para CS2, facilitando su modificación.
 
-## Fase 3: Estrategia de Arbitraje (Multi-Fuente), Alertas y Modo Simulación
-**Objetivo:** Implementar arbitraje (DMarket, PriceEmpire, SCM opc.), alertas y simulación.
+## Fase 3: Estrategia de Arbitraje (DMarket), Alertas y Modo Simulación
+**Objetivo:** Implementar arbitraje con datos de DMarket, alertas y simulación.
 
 - **[ ] Tarea: Lógica de Arbitraje (`core/strategy_engine.py`)**
-    - Descripción: Comparar precios (DMarket, PriceEmpire, SCM opc.), calcular comisiones y beneficio.
+    - Descripción: Analizar precios de DMarket, calcular comisiones y beneficio potencial.
     - Esfuerzo: Alto.
 - **[ ] Tarea: Módulo de Alertas (`core/alerter.py`)**
     - Descripción: Notificaciones (email/Telegram).
@@ -111,16 +130,16 @@ Este documento sigue el progreso del desarrollo del "Sistema Integral de Trading
     - Esfuerzo: Medio.
 
 ## Fase 4: Estrategia de Flipping y Análisis Avanzado
-**Objetivo:** Implementar estrategia de flipping con datos de DMarket y PriceEmpire.
+**Objetivo:** Implementar estrategia de flipping con datos de DMarket.
 
 - **[ ] Tarea: (Opcional) Conectores/Scrapers para Fuentes Adicionales (ej. CSFloat API)**
     - Descripción: Investigar y desarrollar conectores/scrapers adicionales.
     - Esfuerzo: Muy Alto.
 - **[ ] Tarea: Lógica de Flipping (`core/strategy_engine.py`)**
-    - Descripción: Identificar ítems subvaluados (precio vs. promedio histórico de DMarket/PriceEmpire).
+    - Descripción: Identificar ítems subvaluados en DMarket (precio vs. promedio histórico de DMarket).
     - Esfuerzo: Alto.
-- **[ ] Tarea: Refinar `data_manager.py` para Múltiples Fuentes y Promedios.**
-    - Descripción: Soportar todas las plataformas, cálculo eficiente de precios promedio.
+- **[ ] Tarea: Refinar `data_manager.py` para el análisis de datos de DMarket.**
+    - Descripción: Soportar eficientemente el cálculo de precios promedio y otros análisis de DMarket.
     - Esfuerzo: Medio.
 - **[ ] Tarea: Expandir Modo Simulación para Estrategia de Flipping.**
     - Descripción: Integrar lógica de flipping en simulación.

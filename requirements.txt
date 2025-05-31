@@ -13,6 +13,9 @@ requests
 # Gestión de variables de entorno
 python-dotenv
 
+# SQLAlchemy para ORM y base de datos
+SQLAlchemy
+
 # Testing
 pytest
 pytest-mock

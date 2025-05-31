@@ -2,15 +2,19 @@ import requests
 import os
 import time
 import json
+import logging
 from typing import Optional, Dict, Any
 from urllib.parse import urlencode
 
 from nacl.bindings import crypto_sign
 
 from dotenv import load_dotenv
-from utils.logger import logger
+from utils.logger import configure_logging
 
 load_dotenv()
+
+# Obtener logger para este módulo
+logger = logging.getLogger(__name__)
 
 # Definir el prefijo de la firma como una constante
 SIGNATURE_PREFIX = "dmar ed25519 "
@@ -238,6 +242,9 @@ class DMarketAPI:
 
 # Ejemplo de uso (requiere que .env esté configurado con las claves)
 if __name__ == "__main__":
+    # Configurar logging para la ejecución directa de este script
+    configure_logging(log_level=logging.DEBUG)
+
     try:
         logger.info("Iniciando prueba del conector DMarketAPI desde core/dmarket_connector.py...")
         
