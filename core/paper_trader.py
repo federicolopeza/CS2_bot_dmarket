@@ -4,7 +4,8 @@ import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 from enum import Enum
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean, func
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean
+from sqlalchemy import func as sqlalchemy_func
 from sqlalchemy.orm import Session
 from core.data_manager import Base, get_db
 
@@ -44,7 +45,7 @@ class PaperTransaction(Base):
     executed_at = Column(DateTime, nullable=True)
     
     # Estado y resultados
-    status = Column(String, nullable=False)
+    status = Column(String, default=TransactionStatus.PENDING.value, nullable=False)
     actual_profit_usd = Column(Float, nullable=True)  # Profit real al cerrar posición
     notes = Column(Text, nullable=True)
 
@@ -122,10 +123,11 @@ class PaperTrader:
         Returns:
             Dict con cash_balance, portfolio_value, total_balance
         """
-        with next(get_db()) as db:
+        db: Session = next(get_db())
+        try:
             # Calcular cash disponible
             total_invested = db.query(PaperPortfolio).with_entities(
-                func.sum(PaperPortfolio.total_invested_usd)
+                sqlalchemy_func.sum(PaperPortfolio.total_invested_usd)
             ).scalar() or 0.0
             
             cash_balance = self.initial_balance_usd - total_invested
@@ -139,6 +141,8 @@ class PaperTrader:
                 "total_balance": cash_balance + portfolio_value,
                 "total_invested": total_invested
             }
+        finally:
+            db.close()
 
     def can_afford_purchase(self, price_usd: float, quantity: int = 1) -> bool:
         """Verifica si se puede permitir una compra."""
@@ -188,7 +192,8 @@ class PaperTrader:
             return result
         
         # Crear transacción de compra
-        with next(get_db()) as db:
+        db: Session = next(get_db())
+        try:
             transaction = PaperTransaction(
                 transaction_type=TransactionType.BUY.value,
                 item_title=item_title,
@@ -220,6 +225,8 @@ class PaperTrader:
             
             logger.info(f"Compra simulada exitosa: {item_title} por ${buy_price:.2f}")
             return result
+        finally:
+            db.close()
 
     def simulate_sell_position(self, item_title: str, sell_price_usd: float, reason: str = "manual") -> Dict[str, Any]:
         """
@@ -233,7 +240,8 @@ class PaperTrader:
         Returns:
             Dict con el resultado de la venta.
         """
-        with next(get_db()) as db:
+        db: Session = next(get_db())
+        try:
             # Buscar posición en portfolio
             position = db.query(PaperPortfolio).filter(
                 PaperPortfolio.item_title == item_title
@@ -290,6 +298,8 @@ class PaperTrader:
             
             logger.info(f"Venta simulada: {item_title} por ${sell_price_usd:.2f}, profit neto: ${net_profit:.2f}")
             return result
+        finally:
+            db.close()
 
     def _update_portfolio_after_buy(self, db: Session, item_title: str, price_usd: float, strategy_type: str, opportunity: Dict[str, Any]):
         """Actualiza el portfolio después de una compra."""
@@ -322,7 +332,8 @@ class PaperTrader:
 
     def get_portfolio_summary(self) -> Dict[str, Any]:
         """Obtiene un resumen del portfolio actual."""
-        with next(get_db()) as db:
+        db: Session = next(get_db())
+        try:
             positions = db.query(PaperPortfolio).all()
             balance_info = self.get_current_balance()
             
@@ -348,10 +359,13 @@ class PaperTrader:
                 "positions": portfolio_items,
                 "total_positions": len(portfolio_items)
             }
+        finally:
+            db.close()
 
     def get_performance_summary(self) -> Dict[str, Any]:
         """Obtiene un resumen del rendimiento histórico."""
-        with next(get_db()) as db:
+        db: Session = next(get_db())
+        try:
             # Transacciones completadas
             completed_sales = db.query(PaperTransaction).filter(
                 PaperTransaction.transaction_type == TransactionType.SELL.value,
@@ -384,6 +398,8 @@ class PaperTrader:
                 "best_trade": max(profits) if profits else 0,
                 "worst_trade": min(profits) if profits else 0
             }
+        finally:
+            db.close()
 
 # Función de conveniencia
 def create_paper_trader(initial_balance: float = 1000.0, config: Optional[Dict[str, Any]] = None) -> PaperTrader:

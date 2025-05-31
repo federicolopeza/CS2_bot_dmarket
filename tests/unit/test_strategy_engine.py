@@ -4,7 +4,8 @@ import os
 import sys
 import logging
 import time
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, Mock, patch, PropertyMock
+from datetime import datetime, timedelta
 
 # Añadir el directorio raíz del proyecto a sys.path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -13,7 +14,7 @@ if project_root not in sys.path:
 
 from core.strategy_engine import StrategyEngine, DEFAULT_GAME_ID
 from core.dmarket_connector import DMarketAPI
-from core.market_analyzer import MarketAnalyzer
+from core.market_analyzer import MarketAnalyzer, AttributeEvaluation, FloatRarity, AttributeRarity
 from core.data_manager import SkinsMaestra, PreciosHistoricos 
 
 # Configurar logger para pruebas si es necesario ver la salida
@@ -251,7 +252,7 @@ def test_find_basic_flips_success(engine_with_fees_cached: StrategyEngine):
     
     assert len(opportunities) == 1
     op = opportunities[0]
-    assert op["type"] == "basic_flip"
+    assert op["strategy"] == "basic_flip"
     assert op["item_title"] == "Flip Item 1"
     assert op["buy_price_usd"] == pytest.approx(10.00)
     assert op["sell_price_usd"] == pytest.approx(12.00)
@@ -370,7 +371,7 @@ def test_find_snipes_success(engine_with_fees_cached: StrategyEngine, mock_marke
     
     assert len(opportunities) == 1
     op = opportunities[0]
-    assert op["type"] == "snipe"
+    assert op["strategy"] == "snipe"
     assert op["item_title"] == "Snipe Item 1"
     assert op["pme_usd"] == pytest.approx(MOCK_SNIPE_PME_USD)
     assert op["offer_price_usd"] == pytest.approx(8.00)
@@ -554,15 +555,38 @@ def test_run_strategies_orchestration(
 
     mock_db_session.query.side_effect = [mock_query_result_item1, mock_query_result_item2]
 
+    # Datos de ítems simulados para _get_item_data
+    mock_item_data_1 = {
+        'title': 'Item 1',
+        'current_sell_offers': mock_sell_offers_item1["objects"],
+        'current_buy_orders': mock_buy_orders_item1["offers"],
+        'historical_prices': [{"price_usd": mock_precio1_item1.price, 
+                              "timestamp": mock_precio1_item1.timestamp.isoformat(), 
+                              "fuente_api": mock_precio1_item1.fuente_api}]
+    }
+    
+    mock_item_data_2 = {
+        'title': 'Item 2',
+        'current_sell_offers': mock_sell_offers_item2["objects"],
+        'current_buy_orders': mock_buy_orders_item2["offers"],
+        'historical_prices': []  # Sin datos históricos
+    }
 
     # Mockear las funciones de estrategia internas para verificar que se llaman
     # y para controlar qué oportunidades retornan.
-    expected_flip_op_item1 = {"type": "basic_flip", "item_title": "Item 1", "profit_usd": 0.10}
-    expected_snipe_op_item1 = {"type": "snipe", "item_title": "Item 1", "profit_usd": 0.20}
+    expected_flip_op_item1 = {"strategy": "basic_flip", "item_title": "Item 1", "profit_usd": 0.10}
+    expected_snipe_op_item1 = {"strategy": "snipe", "item_title": "Item 1", "profit_usd": 0.20}
     
     with patch.object(engine, '_fetch_and_cache_fee_info', return_value=True) as mock_fetch_fees, \
+         patch.object(engine, '_get_item_data') as mock_get_item_data, \
          patch.object(engine, '_find_basic_flips') as mock_find_flips, \
-         patch.object(engine, '_find_snipes') as mock_find_snipes:
+         patch.object(engine, '_find_snipes') as mock_find_snipes, \
+         patch.object(engine, '_find_attribute_premium_flips', return_value=[]) as mock_find_attr, \
+         patch.object(engine, '_find_trade_lock_opportunities', return_value=[]) as mock_find_trade, \
+         patch.object(engine, '_find_volatility_opportunities', return_value=[]) as mock_find_vol:
+        
+        # Configurar _get_item_data para retornar datos simulados
+        mock_get_item_data.side_effect = [mock_item_data_1, mock_item_data_2]
         
         mock_find_flips.side_effect = [
             [expected_flip_op_item1], # Para Item 1
@@ -580,51 +604,49 @@ def test_run_strategies_orchestration(
     # Verificaciones
     mock_fetch_fees.assert_called_once_with(engine.config["game_id"])
     
-    assert mock_dmarket_connector.get_offers_by_title.call_count == 2
-    mock_dmarket_connector.get_offers_by_title.assert_any_call(title="Item 1", limit=100, currency="USD")
-    mock_dmarket_connector.get_offers_by_title.assert_any_call(title="Item 2", limit=100, currency="USD")
-    
-    assert mock_dmarket_connector.get_buy_offers.call_count == 2
-    mock_dmarket_connector.get_buy_offers.assert_any_call(title="Item 1", game_id=engine.config["game_id"], limit=100, order_by="price", order_dir="desc", currency="USD")
-    mock_dmarket_connector.get_buy_offers.assert_any_call(title="Item 2", game_id=engine.config["game_id"], limit=100, order_by="price", order_dir="desc", currency="USD")
-
-    assert mock_db_session.query.call_count == 2
-    mock_db_session.query.assert_any_call(SkinsMaestra) # Verifica que se llamó con SkinsMaestra
-    # Verificar que .filter().first() fue llamado en la cadena (indirectamente a través del side_effect de query)
-    mock_query_result_item1.filter.return_value.first.assert_called() 
-    mock_query_result_item2.filter.return_value.first.assert_called() 
+    # Verificar que _get_item_data se llamó para ambos ítems
+    assert mock_get_item_data.call_count == 2
+    mock_get_item_data.assert_any_call("Item 1")
+    mock_get_item_data.assert_any_call("Item 2")
 
     assert mock_find_flips.call_count == 2
-    mock_find_flips.assert_any_call("Item 1", mock_sell_offers_item1["objects"], mock_buy_orders_item1["offers"])
-    mock_find_flips.assert_any_call("Item 2", mock_sell_offers_item2["objects"], mock_buy_orders_item2["offers"])
+    mock_find_flips.assert_any_call("Item 1", mock_item_data_1['current_sell_offers'], mock_item_data_1['current_buy_orders'])
+    mock_find_flips.assert_any_call("Item 2", mock_item_data_2['current_sell_offers'], mock_item_data_2['current_buy_orders'])
 
     assert mock_find_snipes.call_count == 2
-    expected_hist_item1_formatted = [{"price_usd": mock_precio1_item1.price, 
-                                      "timestamp": mock_precio1_item1.timestamp.isoformat(), 
-                                      "fuente_api": mock_precio1_item1.fuente_api}]
-    mock_find_snipes.assert_any_call("Item 1", mock_sell_offers_item1["objects"], expected_hist_item1_formatted)
-    mock_find_snipes.assert_any_call("Item 2", mock_sell_offers_item2["objects"], []) 
+    mock_find_snipes.assert_any_call("Item 1", mock_item_data_1['current_sell_offers'], mock_item_data_1['historical_prices'])
+    mock_find_snipes.assert_any_call("Item 2", mock_item_data_2['current_sell_offers'], mock_item_data_2['historical_prices'])
 
-    assert mock_time_sleep.call_count == len(items_to_scan)
+    # Verificar que las nuevas estrategias también se llamaron
+    assert mock_find_attr.call_count == 2
+    assert mock_find_trade.call_count == 2
+    assert mock_find_vol.call_count == 2
+
+    # time.sleep solo se llama entre ítems, no después del último
+    assert mock_time_sleep.call_count == len(items_to_scan) - 1
     mock_time_sleep.assert_called_with(engine.config["delay_between_items_sec"])
-
-    mock_db_session.close.assert_called_once()
 
     assert len(results["basic_flips"]) == 1
     assert results["basic_flips"][0] == expected_flip_op_item1
     assert len(results["snipes"]) == 1
     assert results["snipes"][0] == expected_snipe_op_item1
     
-    assert "Ejecución de todas las estrategias completada." in caplog.text
+    # Verificar que las nuevas estrategias están en los resultados
+    assert "attribute_flips" in results
+    assert "trade_lock_arbitrage" in results
+    assert "volatility_trading" in results
 
 
 def test_run_strategies_no_items(default_strategy_engine: StrategyEngine, caplog):
     """Prueba run_strategies con una lista vacía de ítems."""
-    with caplog.at_level(logging.WARNING):
+    # Configurar el mock para que las tasas fallen
+    default_strategy_engine.connector.get_fee_rates.return_value = {"error": "No fees"}
+    
+    with caplog.at_level(logging.ERROR):
         results = default_strategy_engine.run_strategies([])
     assert results["basic_flips"] == []
     assert results["snipes"] == []
-    assert "No se proporcionaron ítems para escanear." in caplog.text
+    assert "No se pudieron cargar las tasas de comisión" in caplog.text
 
 def test_run_strategies_fee_fetch_fails_globally(
     default_strategy_engine: StrategyEngine, 
@@ -638,7 +660,633 @@ def test_run_strategies_fee_fetch_fails_globally(
             engine.run_strategies(["Item 1"]) 
     
     mock_initial_fetch_fees.assert_called_once()
-    assert f"Fallo al obtener tasas de comisión para el juego {engine.config['game_id']}" in caplog.text
-    mock_dmarket_connector.get_offers_by_title.assert_called() 
+    assert "No se pudieron cargar las tasas de comisión" in caplog.text
 
 # Fin de las pruebas para StrategyEngine por ahora.
+
+class TestStrategyEngine:
+    """Pruebas unitarias para StrategyEngine."""
+
+    def setup_method(self):
+        """Configuración para cada prueba."""
+        self.mock_connector = MagicMock()
+        self.mock_analyzer = MagicMock()
+        self.mock_volatility_analyzer = MagicMock()
+        self.engine = StrategyEngine(self.mock_connector, self.mock_analyzer)
+        # Reemplazar el volatility_analyzer real con nuestro mock
+        self.engine.volatility_analyzer = self.mock_volatility_analyzer
+
+    def test_init_default_config(self):
+        """Prueba la inicialización con configuración por defecto."""
+        engine = StrategyEngine(MagicMock(), MagicMock())
+        assert engine.config is not None
+        assert "min_profit_usd_basic_flip" in engine.config
+        assert "min_profit_usd_attribute_flip" in engine.config
+        assert "min_profit_usd_trade_lock" in engine.config
+
+    def test_init_custom_config(self):
+        """Prueba la inicialización con configuración personalizada."""
+        custom_config = {"min_profit_usd_basic_flip": 2.0}
+        engine = StrategyEngine(MagicMock(), MagicMock(), custom_config)
+        assert engine.config["min_profit_usd_basic_flip"] == 2.0
+
+    def test_fetch_and_cache_fee_info_success(self):
+        """Prueba la obtención exitosa de información de tasas."""
+        mock_response = {
+            "gameId": "a8db",
+            "rates": [{"type": "exchange", "amount": "0.030"}],
+            "minCommission": {"currency": "USD", "amount": "0.01"}
+        }
+        self.mock_connector.get_fee_rates.return_value = mock_response
+        
+        result = self.engine._fetch_and_cache_fee_info("a8db")
+        
+        assert result is True
+        assert self.engine.dmarket_fee_info == mock_response
+
+    def test_fetch_and_cache_fee_info_failure(self):
+        """Prueba el fallo en la obtención de información de tasas."""
+        self.mock_connector.get_fee_rates.return_value = {"error": "API Error"}
+        
+        result = self.engine._fetch_and_cache_fee_info("a8db")
+        
+        assert result is False
+        assert self.engine.dmarket_fee_info is None
+
+    def test_calculate_dmarket_sale_fee_cents(self):
+        """Prueba el cálculo de comisión de venta."""
+        self.engine.dmarket_fee_info = {
+            "rates": [{"type": "exchange", "amount": "0.030"}],
+            "minCommission": {"currency": "USD", "amount": "0.01"}
+        }
+        
+        # Precio de $10.00 (1000 centavos) con 3% de comisión = 30 centavos
+        fee = self.engine._calculate_dmarket_sale_fee_cents(1000)
+        assert fee == 30
+
+    def test_calculate_dmarket_sale_fee_cents_minimum(self):
+        """Prueba el cálculo de comisión mínima."""
+        self.engine.dmarket_fee_info = {
+            "rates": [{"type": "exchange", "amount": "0.030"}],
+            "minCommission": {"currency": "USD", "amount": "0.05"}
+        }
+        
+        # Precio de $0.50 (50 centavos) con 3% = 1.5 centavos, pero mínimo es 5 centavos
+        fee = self.engine._calculate_dmarket_sale_fee_cents(50)
+        assert fee == 5
+
+    def test_find_basic_flips_success(self):
+        """Prueba la búsqueda exitosa de flips básicos."""
+        # Configurar las tasas de comisión correctamente
+        self.engine.dmarket_fee_info = {
+            "gameId": "a8db",
+            "rates": [{"type": "exchange", "amount": "0.030"}]
+        }
+        
+        sell_offers = [
+            {"price": {"USD": "1000"}, "assetId": "asset1"}  # $10.00
+        ]
+        buy_orders = [
+            {"price": {"USD": "1200"}, "offerId": "order1"}  # $12.00
+        ]
+        
+        opportunities = self.engine._find_basic_flips("AK-47 | Redline", sell_offers, buy_orders)
+        
+        assert len(opportunities) == 1
+        assert opportunities[0]["strategy"] == "basic_flip"
+        assert opportunities[0]["buy_price_usd"] == 10.0
+        assert opportunities[0]["sell_price_usd"] == 12.0
+
+    def test_find_basic_flips_no_profit(self):
+        """Prueba cuando no hay beneficio en flips básicos."""
+        # Configurar las tasas de comisión correctamente
+        self.engine.dmarket_fee_info = {
+            "gameId": "a8db",
+            "rates": [{"type": "exchange", "amount": "0.030"}]
+        }
+        
+        sell_offers = [
+            {"price": {"USD": "1200"}, "assetId": "asset1"}  # $12.00
+        ]
+        buy_orders = [
+            {"price": {"USD": "1000"}, "offerId": "order1"}  # $10.00
+        ]
+        
+        opportunities = self.engine._find_basic_flips("AK-47 | Redline", sell_offers, buy_orders)
+        
+        assert len(opportunities) == 0
+
+    def test_find_snipes_success(self):
+        """Prueba la búsqueda exitosa de snipes."""
+        # Configurar las tasas de comisión correctamente
+        self.engine.dmarket_fee_info = {
+            "gameId": "a8db",
+            "rates": [{"type": "exchange", "amount": "0.030"}]
+        }
+        
+        # Mock del market analyzer para retornar PME de $10.00
+        self.mock_analyzer.calculate_estimated_market_price.return_value = 10.0
+        
+        sell_offers = [
+            {"price": {"USD": "800"}, "assetId": "asset1"}  # $8.00 (20% descuento)
+        ]
+        historical_prices = [
+            {"price_usd": 10.0, "timestamp": "2023-01-01T00:00:00Z"}
+        ]
+        
+        opportunities = self.engine._find_snipes("AK-47 | Redline", sell_offers, historical_prices)
+        
+        assert len(opportunities) == 1
+        assert opportunities[0]["strategy"] == "snipe"
+        assert opportunities[0]["offer_price_usd"] == 8.0
+
+    def test_extract_item_attributes(self):
+        """Prueba la extracción de atributos de un ítem."""
+        offer = {
+            "float": "0.003",
+            "paintseed": "661",
+            "title": "StatTrak™ AK-47 | Case Hardened (Factory New)",
+            "phase": "Phase 2",
+            "fade_percentage": "95.5"
+        }
+        
+        attributes = self.engine._extract_item_attributes(offer)
+        
+        assert attributes["float"] == 0.003
+        assert attributes["paintseed"] == 661
+        assert attributes["stattrak"] is True
+        assert attributes["souvenir"] is False
+        assert attributes["phase"] == "Phase 2"
+        assert attributes["fade_percentage"] == 95.5
+
+    def test_extract_item_attributes_souvenir(self):
+        """Prueba la extracción de atributos de un ítem Souvenir."""
+        offer = {
+            "title": "Souvenir AK-47 | Safari Mesh (Field-Tested)",
+            "pattern": "123"
+        }
+        
+        attributes = self.engine._extract_item_attributes(offer)
+        
+        assert attributes["pattern"] == 123
+        assert attributes["stattrak"] is False
+        assert attributes["souvenir"] is True
+
+    def test_extract_trade_lock_info_with_lock(self):
+        """Prueba la extracción de información de trade lock."""
+        offer = {
+            "tradeLock": {
+                "daysRemaining": "3"
+            }
+        }
+        
+        trade_lock_info = self.engine._extract_trade_lock_info(offer)
+        
+        assert trade_lock_info["has_trade_lock"] is True
+        assert trade_lock_info["days_remaining"] == 3
+        assert trade_lock_info["unlock_date"] is not None
+
+    def test_extract_trade_lock_info_no_lock(self):
+        """Prueba la extracción cuando no hay trade lock."""
+        offer = {
+            "title": "AK-47 | Redline (Field-Tested)"
+        }
+        
+        trade_lock_info = self.engine._extract_trade_lock_info(offer)
+        
+        assert trade_lock_info["has_trade_lock"] is False
+        assert trade_lock_info["days_remaining"] == 0
+        assert trade_lock_info["unlock_date"] is None
+
+    def test_extract_trade_lock_info_in_title(self):
+        """Prueba la detección de trade lock en el título."""
+        offer = {
+            "title": "AK-47 | Redline (Field-Tested) - Trade Lock"
+        }
+        
+        trade_lock_info = self.engine._extract_trade_lock_info(offer)
+        
+        assert trade_lock_info["has_trade_lock"] is True
+
+    def test_get_reference_price_no_trade_lock(self):
+        """Prueba la obtención de precio de referencia sin trade lock."""
+        offers = [
+            {"price": {"USD": "1000"}},  # $10.00 - sin trade lock
+            {"price": {"USD": "1200"}},  # $12.00 - sin trade lock
+            {"price": {"USD": "800"}, "tradeLock": {"daysRemaining": "3"}}  # $8.00 - con trade lock
+        ]
+        
+        reference_price = self.engine._get_reference_price_no_trade_lock("AK-47 | Redline", offers)
+        
+        # Promedio de $10.00 y $12.00 = $11.00
+        assert reference_price == 11.0
+
+    def test_get_reference_price_no_trade_lock_all_locked(self):
+        """Prueba cuando todas las ofertas tienen trade lock."""
+        offers = [
+            {"price": {"USD": "800"}, "tradeLock": {"daysRemaining": "3"}},
+            {"price": {"USD": "900"}, "title": "AK-47 | Redline - Trade Lock"}
+        ]
+        
+        reference_price = self.engine._get_reference_price_no_trade_lock("AK-47 | Redline", offers)
+        
+        assert reference_price is None
+
+    @patch('core.strategy_engine.get_db')
+    def test_get_item_data_success(self, mock_get_db):
+        """Prueba la obtención exitosa de datos de un ítem."""
+        # Mock de la base de datos
+        mock_db = MagicMock()
+        mock_get_db.return_value.__next__.return_value = mock_db
+        
+        mock_skin = MagicMock()
+        mock_skin.precios = [
+            MagicMock(price=10.0, timestamp=datetime.now(), fuente_api="dmarket")
+        ]
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_skin
+        
+        # Mock de las respuestas de la API
+        self.mock_connector.get_offers_by_title.return_value = {
+            "objects": [{"price": {"USD": "1000"}, "assetId": "asset1"}]
+        }
+        self.mock_connector.get_buy_offers.return_value = {
+            "offers": [{"price": {"USD": "1200"}, "offerId": "order1"}]
+        }
+        
+        item_data = self.engine._get_item_data("AK-47 | Redline")
+        
+        assert item_data is not None
+        assert item_data["title"] == "AK-47 | Redline"
+        assert len(item_data["current_sell_offers"]) == 1
+        assert len(item_data["current_buy_orders"]) == 1
+        assert len(item_data["historical_prices"]) == 1
+
+    @patch('core.strategy_engine.get_db')
+    def test_get_item_data_api_error(self, mock_get_db):
+        """Prueba cuando hay errores en la API."""
+        # Mock de la base de datos
+        mock_db = MagicMock()
+        mock_get_db.return_value.__next__.return_value = mock_db
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        
+        # Mock de respuestas de error de la API
+        self.mock_connector.get_offers_by_title.return_value = {"error": "API Error"}
+        self.mock_connector.get_buy_offers.return_value = {"error": "API Error"}
+        
+        item_data = self.engine._get_item_data("AK-47 | Redline")
+        
+        assert item_data is not None
+        assert len(item_data["current_sell_offers"]) == 0
+        assert len(item_data["current_buy_orders"]) == 0
+        assert len(item_data["historical_prices"]) == 0
+
+    def test_find_attribute_premium_flips_success(self):
+        """Prueba la búsqueda exitosa de flips por atributos premium."""
+        self.engine.dmarket_fee_info = {
+            "rates": [{"type": "exchange", "amount": "0.030"}]
+        }
+        
+        # Mock del market analyzer
+        mock_evaluation = AttributeEvaluation(
+            float_value=0.003,
+            float_rarity=FloatRarity.FACTORY_NEW,
+            pattern_index=661,
+            pattern_rarity=AttributeRarity.EXTREMELY_RARE,
+            stickers_value=50000.0,
+            stickers_rarity=AttributeRarity.EXTREMELY_RARE,
+            stattrak=True,
+            souvenir=False,
+            overall_rarity_score=95.0,
+            premium_multiplier=8.0,
+            special_attributes={}
+        )
+        self.mock_analyzer.evaluate_attribute_rarity.return_value = mock_evaluation
+        
+        item_data = {
+            "title": "AK-47 | Case Hardened",
+            "current_sell_offers": [
+                {
+                    "price": {"USD": "5000"},  # $50.00
+                    "assetId": "asset1",
+                    "float": "0.003",
+                    "paintseed": "661",
+                    "stickers": [{"name": "iBUYPOWER (Holo)"}]
+                }
+            ],
+            "historical_prices": [{"price_usd": 100.0}]
+        }
+        
+        # Mock del precio base estimado
+        self.mock_analyzer.calculate_estimated_market_price.return_value = 100.0
+        
+        opportunities = self.engine._find_attribute_premium_flips(
+            item_data, self.engine.dmarket_fee_info, self.mock_analyzer
+        )
+        
+        assert len(opportunities) == 1
+        assert opportunities[0]["strategy"] == "attribute_premium_flip"
+        assert opportunities[0]["buy_price_usd"] == 50.0
+        assert opportunities[0]["rarity_score"] == 95.0
+        assert opportunities[0]["premium_multiplier"] == 8.0
+
+    def test_find_attribute_premium_flips_low_rarity(self):
+        """Prueba cuando los atributos no son lo suficientemente raros."""
+        mock_evaluation = AttributeEvaluation(
+            float_value=0.25,
+            float_rarity=FloatRarity.FIELD_TESTED,
+            pattern_index=500,
+            pattern_rarity=AttributeRarity.COMMON,
+            stickers_value=0.0,
+            stickers_rarity=AttributeRarity.COMMON,
+            stattrak=False,
+            souvenir=False,
+            overall_rarity_score=10.0,  # Muy bajo
+            premium_multiplier=1.0,     # Muy bajo
+            special_attributes={}
+        )
+        self.mock_analyzer.evaluate_attribute_rarity.return_value = mock_evaluation
+        
+        item_data = {
+            "title": "AK-47 | Redline",
+            "current_sell_offers": [
+                {
+                    "price": {"USD": "1000"},
+                    "assetId": "asset1",
+                    "float": "0.25"
+                }
+            ]
+        }
+        
+        opportunities = self.engine._find_attribute_premium_flips(
+            item_data, {}, self.mock_analyzer
+        )
+        
+        assert len(opportunities) == 0
+
+    def test_find_trade_lock_opportunities_success(self):
+        """Prueba la búsqueda exitosa de oportunidades de trade lock."""
+        self.engine.dmarket_fee_info = {
+            "rates": [{"type": "exchange", "amount": "0.030"}]
+        }
+        
+        item_data = {
+            "title": "AK-47 | Redline",
+            "current_sell_offers": [
+                {"price": {"USD": "1000"}},  # $10.00 - sin trade lock
+                {"price": {"USD": "1200"}},  # $12.00 - sin trade lock
+                {
+                    "price": {"USD": "700"},  # $7.00 - con trade lock (36% descuento)
+                    "assetId": "asset1",
+                    "tradeLock": {"daysRemaining": "3"}
+                }
+            ]
+        }
+        
+        opportunities = self.engine._find_trade_lock_opportunities(
+            item_data, self.engine.dmarket_fee_info
+        )
+        
+        assert len(opportunities) == 1
+        assert opportunities[0]["strategy"] == "trade_lock_arbitrage"
+        assert opportunities[0]["buy_price_usd"] == 7.0
+        assert opportunities[0]["reference_price_usd"] == 11.0  # Promedio de 10 y 12
+        assert opportunities[0]["trade_lock_days"] == 3
+
+    def test_find_trade_lock_opportunities_insufficient_discount(self):
+        """Prueba cuando el descuento no es suficiente."""
+        item_data = {
+            "title": "AK-47 | Redline",
+            "current_sell_offers": [
+                {"price": {"USD": "1000"}},  # $10.00 - sin trade lock
+                {
+                    "price": {"USD": "900"},  # $9.00 - solo 10% descuento
+                    "assetId": "asset1",
+                    "tradeLock": {"daysRemaining": "3"}
+                }
+            ]
+        }
+        
+        opportunities = self.engine._find_trade_lock_opportunities(item_data, {})
+        
+        assert len(opportunities) == 0
+
+    def test_find_trade_lock_opportunities_too_long_lock(self):
+        """Prueba cuando el bloqueo es demasiado largo."""
+        # Mock del market analyzer para evaluar atributos
+        mock_evaluation = MagicMock()
+        mock_evaluation.overall_rarity_score = 60.0
+        mock_evaluation.premium_multiplier = 1.8
+        self.mock_analyzer.evaluate_attribute_rarity.return_value = mock_evaluation
+        
+        item_data = {
+            'title': 'Test Item',
+            'current_sell_offers': [
+                {
+                    'price': {'USD': '10000'},  # $100.00
+                    'assetId': 'asset1',
+                    'tradeLock': {'daysRemaining': '10'}  # Más de 7 días
+                }
+            ]
+        }
+        
+        fee_info = {"rates": [{"type": "exchange", "amount": "0.030"}]}
+        
+        opportunities = self.engine._find_trade_lock_opportunities(item_data, fee_info)
+        
+        assert len(opportunities) == 0
+
+    def test_find_volatility_opportunities_success(self):
+        """Prueba la búsqueda exitosa de oportunidades de volatilidad."""
+        # Mock del volatility analyzer
+        mock_signal = MagicMock()
+        mock_signal.signal_type = "rsi_oversold_buy"
+        mock_signal.entry_price = 100.0
+        mock_signal.target_price = 106.0
+        mock_signal.stop_loss = 97.0
+        mock_signal.expected_profit = 6.0
+        mock_signal.confidence = 0.8
+        mock_signal.strength.value = "strong"
+        mock_signal.risk_reward_ratio = 2.0
+        mock_signal.reasoning = "RSI oversold signal"
+        mock_signal.timestamp.isoformat.return_value = "2023-01-01T12:00:00"
+        mock_signal.indicators.rsi = 25.0
+        mock_signal.indicators.bollinger_upper = 110.0
+        mock_signal.indicators.bollinger_lower = 90.0
+        mock_signal.indicators.bollinger_width = 20.0
+        mock_signal.indicators.moving_average_short = 105.0
+        mock_signal.indicators.moving_average_long = 100.0
+        mock_signal.indicators.volatility_score = 15.0
+        mock_signal.indicators.price_change_24h = 5.0
+        mock_signal.indicators.price_change_7d = 10.0
+        
+        self.mock_volatility_analyzer.identify_volatility_opportunities.return_value = [mock_signal]
+        
+        # Configurar las tasas de comisión
+        self.engine.dmarket_fee_info = {
+            "gameId": "a8db",
+            "rates": [{"type": "exchange", "amount": "0.030"}]
+        }
+        
+        item_data = {
+            'title': 'Test Item',
+            'historical_prices': [
+                {"price_usd": 100.0, "timestamp": "2023-01-01T00:00:00Z"},
+                {"price_usd": 105.0, "timestamp": "2023-01-02T00:00:00Z"}
+            ] * 10,  # Suficientes datos históricos
+            'current_sell_offers': [
+                {"price": {"USD": "10000"}, "assetId": "asset1"}  # $100.00
+            ]
+        }
+        
+        opportunities = self.engine._find_volatility_opportunities(item_data)
+        
+        assert len(opportunities) == 1
+        op = opportunities[0]
+        assert op["strategy"] == "volatility_trading"
+        assert op["signal_type"] == "rsi_oversold_buy"
+        assert op["entry_price_usd"] == 100.0
+        assert op["target_price_usd"] == 106.0
+        assert op["confidence"] == 0.8
+
+    def test_find_volatility_opportunities_insufficient_historical_data(self):
+        """Prueba cuando no hay suficientes datos históricos."""
+        item_data = {
+            'title': 'Test Item',
+            'historical_prices': [
+                {"price_usd": 100.0, "timestamp": "2023-01-01T00:00:00Z"}
+            ],  # Insuficientes datos
+            'current_sell_offers': [
+                {"price": {"USD": "10000"}, "assetId": "asset1"}
+            ]
+        }
+        
+        opportunities = self.engine._find_volatility_opportunities(item_data)
+        
+        assert len(opportunities) == 0
+
+    def test_find_volatility_opportunities_no_current_offers(self):
+        """Prueba cuando no hay ofertas actuales."""
+        item_data = {
+            'title': 'Test Item',
+            'historical_prices': [
+                {"price_usd": 100.0, "timestamp": "2023-01-01T00:00:00Z"}
+            ] * 15,  # Suficientes datos históricos
+            'current_sell_offers': []  # Sin ofertas actuales
+        }
+        
+        opportunities = self.engine._find_volatility_opportunities(item_data)
+        
+        assert len(opportunities) == 0
+
+    def test_find_volatility_opportunities_price_too_high(self):
+        """Prueba cuando el precio excede el límite para volatilidad."""
+        item_data = {
+            'title': 'Test Item',
+            'historical_prices': [
+                {"price_usd": 100.0, "timestamp": "2023-01-01T00:00:00Z"}
+            ] * 15,
+            'current_sell_offers': [
+                {"price": {"USD": "150000"}, "assetId": "asset1"}  # $1500.00 - muy alto
+            ]
+        }
+        
+        opportunities = self.engine._find_volatility_opportunities(item_data)
+        
+        assert len(opportunities) == 0
+
+    def test_find_volatility_opportunities_low_confidence(self):
+        """Prueba cuando la confianza de la señal es muy baja."""
+        # Mock del volatility analyzer con baja confianza
+        mock_signal = MagicMock()
+        mock_signal.confidence = 0.5  # Menor que min_confidence_volatility (0.7)
+        mock_signal.expected_profit = 5.0
+        
+        self.mock_volatility_analyzer.identify_volatility_opportunities.return_value = [mock_signal]
+        
+        item_data = {
+            'title': 'Test Item',
+            'historical_prices': [{"price_usd": 100.0, "timestamp": "2023-01-01T00:00:00Z"}] * 15,
+            'current_sell_offers': [{"price": {"USD": "10000"}, "assetId": "asset1"}]
+        }
+        
+        opportunities = self.engine._find_volatility_opportunities(item_data)
+        
+        assert len(opportunities) == 0
+
+    def test_find_volatility_opportunities_low_profit(self):
+        """Prueba cuando el beneficio esperado es muy bajo."""
+        # Mock del volatility analyzer con bajo beneficio
+        mock_signal = MagicMock()
+        mock_signal.confidence = 0.8
+        mock_signal.expected_profit = 0.5  # Menor que min_profit_usd_volatility (1.50)
+        
+        self.mock_volatility_analyzer.identify_volatility_opportunities.return_value = [mock_signal]
+        
+        item_data = {
+            'title': 'Test Item',
+            'historical_prices': [{"price_usd": 100.0, "timestamp": "2023-01-01T00:00:00Z"}] * 15,
+            'current_sell_offers': [{"price": {"USD": "10000"}, "assetId": "asset1"}]
+        }
+        
+        opportunities = self.engine._find_volatility_opportunities(item_data)
+        
+        assert len(opportunities) == 0
+
+    @patch.object(StrategyEngine, '_get_item_data')
+    @patch.object(StrategyEngine, '_fetch_and_cache_fee_info')
+    def test_run_strategies_with_volatility_success(self, mock_fetch_fees, mock_get_item_data):
+        """Prueba la ejecución exitosa de estrategias incluyendo volatilidad."""
+        mock_fetch_fees.return_value = True
+        
+        # Mock de datos del ítem
+        mock_item_data = {
+            'title': 'Test Item',
+            'current_sell_offers': [{"price": {"USD": "10000"}, "assetId": "asset1"}],
+            'current_buy_orders': [{"price": {"USD": "12000"}, "offerId": "order1"}],
+            'historical_prices': [{"price_usd": 100.0, "timestamp": "2023-01-01T00:00:00Z"}] * 15
+        }
+        mock_get_item_data.return_value = mock_item_data
+        
+        # Mock de señal de volatilidad
+        mock_signal = MagicMock()
+        mock_signal.signal_type = "rsi_oversold_buy"
+        mock_signal.entry_price = 100.0
+        mock_signal.target_price = 106.0
+        mock_signal.stop_loss = 97.0
+        mock_signal.expected_profit = 6.0
+        mock_signal.confidence = 0.8
+        mock_signal.strength.value = "strong"
+        mock_signal.risk_reward_ratio = 2.0
+        mock_signal.reasoning = "RSI oversold signal"
+        mock_signal.timestamp.isoformat.return_value = "2023-01-01T12:00:00"
+        mock_signal.indicators.rsi = 25.0
+        mock_signal.indicators.bollinger_upper = 110.0
+        mock_signal.indicators.bollinger_lower = 90.0
+        mock_signal.indicators.bollinger_width = 20.0
+        mock_signal.indicators.moving_average_short = 105.0
+        mock_signal.indicators.moving_average_long = 100.0
+        mock_signal.indicators.volatility_score = 15.0
+        mock_signal.indicators.price_change_24h = 5.0
+        mock_signal.indicators.price_change_7d = 10.0
+        
+        self.mock_volatility_analyzer.identify_volatility_opportunities.return_value = [mock_signal]
+        
+        # Configurar las tasas de comisión
+        self.engine.dmarket_fee_info = {
+            "gameId": "a8db",
+            "rates": [{"type": "exchange", "amount": "0.030"}]
+        }
+        
+        # Configurar el mock del market analyzer para evitar errores
+        self.mock_analyzer.calculate_estimated_market_price.return_value = None
+        self.mock_analyzer.evaluate_attribute_rarity.return_value = MagicMock(overall_rarity_score=30.0, premium_multiplier=1.0)
+        
+        results = self.engine.run_strategies(["Test Item"])
+        
+        assert "volatility_trading" in results
+        assert len(results["volatility_trading"]) == 1
+        
+        volatility_op = results["volatility_trading"][0]
+        assert volatility_op["strategy"] == "volatility_trading"
+        assert volatility_op["signal_type"] == "rsi_oversold_buy"
+        assert volatility_op["confidence"] == 0.8

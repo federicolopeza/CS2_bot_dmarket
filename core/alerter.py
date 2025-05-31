@@ -22,6 +22,13 @@ class AlertType(Enum):
     ATTRIBUTE_PREMIUM = "attribute_premium"
     VOLATILITY = "volatility"
     TRADE_LOCK = "trade_lock"
+    
+    # Tipos específicos para execution engine
+    OPPORTUNITY_FOUND = "opportunity_found"
+    EXECUTION_SUCCESS = "execution_success"
+    EXECUTION_FAILED = "execution_failed"
+    SYSTEM_ERROR = "system_error"
+    RISK_WARNING = "risk_warning"
 
 class Alerter:
     """
@@ -55,6 +62,13 @@ class Alerter:
                 AlertType.ATTRIBUTE_PREMIUM.value: AlertLevel.HIGH.value,
                 AlertType.VOLATILITY.value: AlertLevel.MEDIUM.value,
                 AlertType.TRADE_LOCK.value: AlertLevel.LOW.value,
+                
+                # Niveles para execution engine
+                AlertType.OPPORTUNITY_FOUND.value: AlertLevel.MEDIUM.value,
+                AlertType.EXECUTION_SUCCESS.value: AlertLevel.HIGH.value,
+                AlertType.EXECUTION_FAILED.value: AlertLevel.HIGH.value,
+                AlertType.SYSTEM_ERROR.value: AlertLevel.CRITICAL.value,
+                AlertType.RISK_WARNING.value: AlertLevel.MEDIUM.value,
             },
             # Configuración futura para otros canales
             "email": {
@@ -217,6 +231,49 @@ class Alerter:
             summary_message += f"\n  - {strategy}: {len(opps)} oportunidades (${strategy_profit:.2f})"
 
         logger.info(summary_message)
+
+    def send_alert(
+        self,
+        alert_level: AlertLevel,
+        alert_type: AlertType,
+        message: str,
+        additional_data: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """
+        Envía una alerta genérica.
+        
+        Args:
+            alert_level: Nivel de la alerta.
+            alert_type: Tipo de alerta.
+            message: Mensaje principal de la alerta.
+            additional_data: Datos adicionales opcionales.
+        """
+        if not self.config.get("enabled", True):
+            return
+        
+        alert_data = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "alert_type": alert_type.value,
+            "alert_level": alert_level.value,
+            "message": message,
+            "additional_data": additional_data or {}
+        }
+        
+        # Formatear mensaje para logging
+        formatted_message = f"🔔 {alert_level.value.upper()} - {alert_type.value.upper()}: {message}"
+        
+        if additional_data:
+            formatted_message += f"\nDetalles: {json.dumps(additional_data, indent=2)}"
+        
+        # Enviar según el nivel
+        if alert_level == AlertLevel.CRITICAL:
+            logger.critical(formatted_message)
+        elif alert_level == AlertLevel.HIGH:
+            logger.error(formatted_message)
+        elif alert_level == AlertLevel.MEDIUM:
+            logger.warning(formatted_message)
+        else:
+            logger.info(formatted_message)
 
     # Métodos placeholder para futuras implementaciones
     def _send_email_alert(self, alert_data: Dict[str, Any]) -> None:

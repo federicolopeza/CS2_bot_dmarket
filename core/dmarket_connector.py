@@ -345,6 +345,169 @@ class DMarketAPI:
         logger.info(f"Solicitando órdenes de compra para '{title}': GET {endpoint} con params: {final_params}")
         return self._make_request(method="GET", endpoint=endpoint, params=final_params)
 
+    def buy_item(self, asset_id: str, price_usd: float) -> Dict[str, Any]:
+        """
+        Compra un ítem específico por su asset_id.
+        
+        Args:
+            asset_id: ID único del asset a comprar.
+            price_usd: Precio de compra en USD (será convertido a centavos).
+            
+        Returns:
+            Dict con el resultado de la compra.
+        """
+        logger.info(f"Intentando comprar ítem {asset_id} por ${price_usd:.2f}")
+        
+        # Convertir precio a centavos (formato requerido por DMarket)
+        price_cents = int(price_usd * 100)
+        
+        endpoint = "/exchange/v1/buy-offers"
+        body_data = {
+            "offers": [
+                {
+                    "assetId": asset_id,
+                    "price": {
+                        "amount": str(price_cents),
+                        "currency": "USD"
+                    }
+                }
+            ]
+        }
+        
+        logger.debug(f"Datos de compra: {body_data}")
+        response = self._make_request("POST", endpoint, body_data=body_data)
+        
+        if "error" not in response:
+            logger.info(f"Compra exitosa para {asset_id}: {response}")
+        else:
+            logger.error(f"Error en compra de {asset_id}: {response}")
+            
+        return response
+
+    def create_sell_offer(
+        self, 
+        asset_id: str, 
+        price_usd: float, 
+        game_id: str = "a8db"
+    ) -> Dict[str, Any]:
+        """
+        Crea una oferta de venta para un ítem del inventario.
+        
+        Args:
+            asset_id: ID único del asset a vender.
+            price_usd: Precio de venta en USD.
+            game_id: ID del juego (por defecto CS2).
+            
+        Returns:
+            Dict con el resultado de la creación de oferta.
+        """
+        logger.info(f"Creando oferta de venta para {asset_id} por ${price_usd:.2f}")
+        
+        # Convertir precio a centavos
+        price_cents = int(price_usd * 100)
+        
+        endpoint = "/exchange/v1/offers"
+        body_data = {
+            "items": [
+                {
+                    "assetId": asset_id,
+                    "price": {
+                        "amount": str(price_cents),
+                        "currency": "USD"
+                    }
+                }
+            ],
+            "gameId": game_id
+        }
+        
+        logger.debug(f"Datos de oferta de venta: {body_data}")
+        response = self._make_request("POST", endpoint, body_data=body_data)
+        
+        if "error" not in response:
+            logger.info(f"Oferta de venta creada exitosamente para {asset_id}: {response}")
+        else:
+            logger.error(f"Error creando oferta de venta para {asset_id}: {response}")
+            
+        return response
+
+    def cancel_sell_offer(self, offer_id: str) -> Dict[str, Any]:
+        """
+        Cancela una oferta de venta activa.
+        
+        Args:
+            offer_id: ID de la oferta a cancelar.
+            
+        Returns:
+            Dict con el resultado de la cancelación.
+        """
+        logger.info(f"Cancelando oferta de venta {offer_id}")
+        
+        endpoint = f"/exchange/v1/offers/{offer_id}/close"
+        response = self._make_request("PATCH", endpoint)
+        
+        if "error" not in response:
+            logger.info(f"Oferta {offer_id} cancelada exitosamente: {response}")
+        else:
+            logger.error(f"Error cancelando oferta {offer_id}: {response}")
+            
+        return response
+
+    def get_user_offers(self, game_id: str = "a8db", limit: int = 100) -> Dict[str, Any]:
+        """
+        Obtiene las ofertas activas del usuario.
+        
+        Args:
+            game_id: ID del juego.
+            limit: Límite de ofertas a obtener.
+            
+        Returns:
+            Dict con las ofertas del usuario.
+        """
+        logger.debug(f"Obteniendo ofertas del usuario para {game_id}")
+        
+        endpoint = "/exchange/v1/user/offers"
+        params = {
+            "gameId": game_id,
+            "limit": limit
+        }
+        
+        response = self._make_request("GET", endpoint, params=params)
+        
+        if "error" not in response:
+            logger.debug(f"Ofertas del usuario obtenidas: {len(response.get('objects', []))} ofertas")
+        else:
+            logger.error(f"Error obteniendo ofertas del usuario: {response}")
+            
+        return response
+
+    def get_user_inventory(self, game_id: str = "a8db", limit: int = 100) -> Dict[str, Any]:
+        """
+        Obtiene el inventario del usuario.
+        
+        Args:
+            game_id: ID del juego.
+            limit: Límite de ítems a obtener.
+            
+        Returns:
+            Dict con el inventario del usuario.
+        """
+        logger.debug(f"Obteniendo inventario del usuario para {game_id}")
+        
+        endpoint = "/exchange/v1/user/items"
+        params = {
+            "gameId": game_id,
+            "limit": limit
+        }
+        
+        response = self._make_request("GET", endpoint, params=params)
+        
+        if "error" not in response:
+            logger.debug(f"Inventario obtenido: {len(response.get('objects', []))} ítems")
+        else:
+            logger.error(f"Error obteniendo inventario: {response}")
+            
+        return response
+
 # Ejemplo de uso (requiere que .env esté configurado con las claves)
 if __name__ == "__main__":
     # Configurar logging para la ejecución directa de este script
