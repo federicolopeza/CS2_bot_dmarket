@@ -120,7 +120,7 @@ Este documento sigue el progreso del desarrollo del "Sistema Integral de Trading
         *   [X] Pruebas unitarias para los nuevos métodos del conector.
     - **Notas:** Asegurar manejo robusto de paginación y errores.
 
-- **[ ] Tarea: Creación del Módulo `core/market_analyzer.py`**
+- **[X] Tarea: Creación del Módulo `core/market_analyzer.py`**
     - Descripción: Módulo para analizar datos de mercado y atributos de ítems.
     - Esfuerzo: Medio.
     - **Subtareas (Fase Inicial):**
@@ -128,7 +128,7 @@ Este documento sigue el progreso del desarrollo del "Sistema Integral de Trading
         *   [X] Pruebas unitarias para `calculate_estimated_market_price`.
     - **Notas:** Inicialmente enfocado en PME. La evaluación de rareza de atributos se abordará en una fase posterior de esta tarea.
 
-- **[ ] Tarea: Desarrollo del Motor de Estrategias (`core/strategy_engine.py`) - Implementación Base**
+- **[X] Tarea: Desarrollo del Motor de Estrategias (`core/strategy_engine.py`) - Implementación Base**
     - Descripción: Crear el motor que orquesta las estrategias, obtiene datos y calcula oportunidades.
     - Esfuerzo: Alto.
     - **Subtareas:**
@@ -148,17 +148,21 @@ Este documento sigue el progreso del desarrollo del "Sistema Integral de Trading
         *   [X] Pruebas unitarias exhaustivas para `StrategyEngine` (config, comisiones, flips, snipes, run_strategies).
     - **Notas:** Esta tarea sienta las bases para todas las estrategias intra-DMarket.
 
-- **[ ] Tarea: Pruebas de Integración para Estrategias (Flip Básico y Sniping)**
+- **[X] Tarea: Pruebas de Integración para Estrategias (Flip Básico y Sniping)**
+    - **Estado:** `Completado`
+    - **Notas:** Implementadas en `tests/integration/test_strategy_engine_integration.py` con 5 pruebas que cubren escenarios de flip básico, sniping, y casos edge. Todas las pruebas pasan exitosamente.
 
-- **[ ] Tarea: Módulo de Alertas (`core/alerter.py`) - Versión Inicial**
-    - Descripción: Notificaciones básicas (inicialmente logging detallado, luego expandible a email/Telegram) para oportunidades encontradas.
-    - Esfuerzo: Bajo-Medio.
-    - **Notas:** Se integra con `StrategyEngine` para reportar oportunidades.
+- **[X] Tarea: Módulo de Alertas (`core/alerter.py`) - Versión Inicial**
+    - **Estado:** `Completado`
+    - **Descripción:** Notificaciones básicas (inicialmente logging detallado, luego expandible a email/Telegram) para oportunidades encontradas.
+    - **Esfuerzo:** Bajo-Medio.
+    - **Notas:** Se integra con `StrategyEngine` para reportar oportunidades. Implementado con sistema de niveles de alerta (LOW, MEDIUM, HIGH, CRITICAL), umbrales configurables, y estructura expandible para futuras integraciones con email/Telegram. Incluye 19 pruebas unitarias.
 
-- **[ ] Tarea: Modo Simulación ("Paper Trading") - Configuración Inicial**
-    - Descripción: Registrar oportunidades identificadas y "transacciones" simuladas en la BD local o logs estructurados.
-    - Esfuerzo: Medio.
-    - **Notas:** No se ejecutan compras/ventas reales. Ayuda a validar la lógica de las estrategias.
+- **[X] Tarea: Modo Simulación ("Paper Trading") - Configuración Inicial**
+    - **Estado:** `Completado`
+    - **Descripción:** Registrar oportunidades identificadas y "transacciones" simuladas en la BD local o logs estructurados.
+    - **Esfuerzo:** Medio.
+    - **Notas:** No se ejecutan compras/ventas reales. Ayuda a validar la lógica de las estrategias. Implementado con modelos de BD para transacciones y portfolio simulado, gestión de balance, límites de riesgo, y tracking de rendimiento. Incluye 23 pruebas unitarias.
 
 ## Fase 4: Expansión del Motor de Estrategias y Funcionalidades Avanzadas
 **Objetivo:** Implementar estrategias más complejas y mejorar el análisis y la gestión.
