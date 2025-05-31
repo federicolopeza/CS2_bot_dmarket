@@ -335,6 +335,141 @@ def test_make_request_handles_signature_generation_failure(api_client_with_valid
     assert "Fallo al generar la firma Ed25519" in caplog.text
 
 
+def test_get_account_balance_success(api_client_with_valid_keys, mocker):
+    """Prueba get_account_balance con una respuesta exitosa."""
+    mock_response_data = {"usd": "10000", "dmc": "5000"} # Centavos o unidades mínimas
+    mocker.patch.object(api_client_with_valid_keys, '_make_request', return_value=mock_response_data)
+    
+    result = api_client_with_valid_keys.get_account_balance()
+    
+    api_client_with_valid_keys._make_request.assert_called_once_with(
+        method="GET", 
+        endpoint="/account/v1/balance"
+    )
+    assert result == mock_response_data
+
+def test_get_fee_rates_success(api_client_with_valid_keys, mocker):
+    """Prueba get_fee_rates con una respuesta exitosa."""
+    game_id = "a8db"
+    mock_response_data = {
+        "gameId": game_id,
+        "rates": [
+            {
+                "amount": "0.030", # 3%
+                "type": "exchange"
+            }
+        ],
+        "minCommission": {
+            "amount": "0.01", # $0.01 USD
+            "currency": "USD"
+        }
+    }
+    mocker.patch.object(api_client_with_valid_keys, '_make_request', return_value=mock_response_data)
+    
+    result = api_client_with_valid_keys.get_fee_rates(game_id=game_id)
+    
+    api_client_with_valid_keys._make_request.assert_called_once_with(
+        method="GET", 
+        endpoint=f"/account/v1/fee-rates/{game_id}"
+    )
+    assert result == mock_response_data
+
+def test_get_offers_by_title_success(api_client_with_valid_keys, mocker):
+    """Prueba get_offers_by_title con una respuesta exitosa."""
+    title = "AK-47 | Redline (Field-Tested)"
+    mock_response_data = {
+        "cursor": "next_page_cursor_value",
+        "objects": [
+            {
+                "assetId": "asset123",
+                "title": title,
+                "price": {"USD": "5500"}, # $55.00
+                "amount": 1,
+                "attributes": {
+                    "floatValue": "0.12345",
+                    "paintSeed": 456,
+                    "paintIndex": 789
+                },
+                "stickers": [
+                    {"name": "Sticker | DMarket", "wear": 0.1}
+                ],
+                "lock": {"until": "2024-12-31T23:59:59Z"} # Ejemplo de campo lock
+            },
+            {
+                "assetId": "asset456",
+                "title": title,
+                "price": {"USD": "5600"},
+                "amount": 1
+                # Otros campos opcionales podrían estar ausentes
+            }
+        ]
+    }
+    mocker.patch.object(api_client_with_valid_keys, '_make_request', return_value=mock_response_data)
+    
+    result = api_client_with_valid_keys.get_offers_by_title(title=title, limit=2, currency="USD")
+    
+    expected_params = {
+        "title": title,
+        "limit": "2",
+        "currency": "USD"
+    }
+    api_client_with_valid_keys._make_request.assert_called_once_with(
+        method="GET", 
+        endpoint="/marketplace/v1/offers-by-title",
+        params=expected_params
+    )
+    assert result == mock_response_data
+
+def test_get_buy_offers_success(api_client_with_valid_keys, mocker):
+    """Prueba get_buy_offers con una respuesta exitosa."""
+    title = "AK-47 | Redline (Field-Tested)"
+    game_id = "a8db"
+    mock_response_data = {
+        "total": 2,
+        "offers": [
+            {
+                "offerId": "buyOffer1",
+                "title": title,
+                "price": {"USD": "5400"}, # $54.00
+                "amount": 1,
+                "conditions": {
+                    "float": {"from": 0.07, "to": 0.15}
+                }
+            },
+            {
+                "offerId": "buyOffer2",
+                "title": title,
+                "price": {"USD": "5350"},
+                "amount": 3
+            }
+        ]
+    }
+    mocker.patch.object(api_client_with_valid_keys, '_make_request', return_value=mock_response_data)
+    
+    result = api_client_with_valid_keys.get_buy_offers(
+        title=title, 
+        game_id=game_id, 
+        limit=2, 
+        currency="USD", 
+        order_by="price", 
+        order_dir="desc"
+    )
+    
+    expected_params = {
+        "title": title,
+        "gameId": game_id,
+        "limit": "2",
+        "currency": "USD",
+        "orderBy": "price",
+        "orderDir": "desc"
+    }
+    api_client_with_valid_keys._make_request.assert_called_once_with(
+        method="GET", 
+        endpoint="/marketplace/v1/buy-offers",
+        params=expected_params
+    )
+    assert result == mock_response_data
+
 # Para ejecutar las pruebas, navega al directorio raíz del proyecto en la terminal y ejecuta:
 # pytest
 # o para más detalle:
