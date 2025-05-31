@@ -45,16 +45,16 @@ Este documento sigue el progreso del desarrollo del "Sistema Integral y Escalabl
     - Asistencia Gemini: (G-Code), (G-Research), (G-Doc).
     - Archivos: core/dmarket_connector.py, (usuario debe crear .env.example y .env).
     - Esfuerzo: Alto.
-    - **Estado:** `En Progreso - Funcionalidad básica de lectura implementada. Requiere Acción del Usuario para verificación de game_id, firma y otros detalles de la API.`
+    - **Estado:** `Parcialmente Completado - Funcionalidad de `get_market_items` y firma HMAC operativa. Endpoint `get_account_balance` devuelve 401 Unauthorized y requiere investigación externa (soporte DMarket). Se procede con la funcionalidad actual para no bloquear el desarrollo.`
     - **Subtareas:**
         *   Cargar claves API desde variables de entorno (`.env`). (Completado)
-        *   Implementar método para `/exchange/v1/market/items` (GET). (Completado, funcionalidad básica)
+        *   Implementar método para `/exchange/v1/market/items` (GET). (Completado)
         *   Incluir manejo básico de errores y logging. (Completado)
-        *   Investigar y confirmar `game_id` para CS2. (Pendiente - Acción del Usuario)
-        *   Estructura preliminar para firma HMAC-SHA256. (Implementado, requiere verificación detallada)
-        *   Investigar estructura de `tree_filters` si es necesario. (Pendiente - Acción del Usuario)
-        *   Investigar y documentar `rate limits` de la API. (Pendiente - Acción del Usuario)
-    - **Notas:** La conexión básica y la obtención de ítems funcionan. Es crucial que el usuario verifique el `game_id` correcto para CS2, los detalles exactos para la firma HMAC-SHA256 (cuando se implementen los endpoints autenticados), y la estructura de `tree_filters` si se usarán filtros avanzados.
+        *   Investigar y confirmar `game_id` para CS2. (Asumido `a8db` por ahora, funcional)
+        *   Estructura preliminar para firma HMAC-SHA256. (Implementado, funcional para `get_market_items`, problema con `get_account_balance` pendiente de resolución externa)
+        *   Investigar estructura de `tree_filters` si es necesario. (Pospuesto - se abordará si surge necesidad)
+        *   Investigar y documentar `rate limits` de la API. (Pospuesto - manejo básico de reintentos para 429 implementado)
+    - **Notas:** La conexión y obtención de ítems del mercado (`get_market_items`) funcionan correctamente, incluyendo la autenticación HMAC. El endpoint `get_account_balance` presenta un error 401 que parece específico a dicho endpoint o a permisos de clave, y se recomienda contactar a soporte de DMarket. Se asume `game_id='a8db'` para CS2. Se pospone la investigación detallada de `tree_filters` y `rate limits` para no detener el progreso, confiando en el manejo básico actual.
 - **[X] Tarea: Script de Prueba Inicial (`test_dmarket_fetch.py`)**
     - Descripción: Crear un script simple que utilice dmarket_connector.py para obtener y mostrar precios de DMarket. Usar el logger.
     - Asistencia Gemini: (G-Code).
@@ -72,130 +72,58 @@ Este documento sigue el progreso del desarrollo del "Sistema Integral y Escalabl
     - Archivos: tests/unit/test_dmarket_connector.py.
     - Esfuerzo: Medio.
 
-## Fase 2: Scraping SCM, Almacenamiento Básico y Normalización (Días 11-25)
-**Objetivo:** Recolectar datos de Steam Community Market, almacenarlos y normalizarlos junto con los de DMarket.
+## Fase 2: Interacción Avanzada con DMarket y Estrategias Básicas (Adaptado)
+**Objetivo:** Implementar funcionalidades clave de DMarket (si `get_account_balance` se resuelve) y explorar estrategias de trading dentro de DMarket.
 
-- **[ ] Tarea: Desarrollo del Scraper para Steam Community Market (core/market_scrapers.py - Módulo SCM).**
-    - Descripción: Implementar funciones para buscar ítem, extraer precio, volumen, precio mediano. Manejar carga dinámica y anti-bloqueo.
-    - Asistencia Gemini: (G-Research), (G-Code).
-    - Archivos: core/market_scrapers.py.
-    - Esfuerzo: Alto.
-- **[ ] Tarea: Implementación Inicial del Gestor de Datos (core/data_manager.py) con SQLite.**
-    - Descripción: Definir esquemas SQLAlchemy, funciones para inicializar BD y tablas, funciones para insertar/actualizar datos.
-    - Asistencia Gemini: (G-Code), (G-Doc).
-    - Archivos: core/data_manager.py, database/schema.sql (opcional).
-    - Esfuerzo: Alto.
-- **[ ] Tarea: Funciones de Normalización de Datos.**
-    - Descripción: Crear funciones en utils/helpers.py o core/data_manager.py para normalizar nombres, convertir precios a USD, estandarizar fechas/horas.
-    - Asistencia Gemini: (G-Code).
-    - Archivos: utils/helpers.py (o core/data_manager.py).
-    - Esfuerzo: Medio.
-- **[ ] Tarea: Script de Población de Base de Datos.**
-    - Descripción: Crear un script que use dmarket_connector, market_scrapers y data_manager para obtener y almacenar datos.
-    - Asistencia Gemini: (G-Code).
-    - Archivos: populate_db.py (o similar).
-    - Esfuerzo: Medio.
-
-## Fase 3: Estrategia de Arbitraje (DMarket vs SCM), Alertas y Modo Simulación (Semanas 5-8)
-**Objetivo:** Implementar la primera estrategia de trading, el sistema de alertas y un modo de simulación.
-
-- **[ ] Tarea: Implementación de la Lógica de Arbitraje (core/strategy_engine.py).**
-    - Descripción: Comparar precios DMarket/SCM desde BD, cálculo de comisiones y beneficio, identificar oportunidades.
+- **[A] Tarea: Resolución del problema con `get_account_balance` en DMarket.**
+    - Descripción: Contactar al soporte de DMarket para resolver el error 401 Unauthorized. Esta tarea es crucial para funcionalidades de cuenta.
+    - Asistencia Gemini: N/A (requiere acción externa del usuario).
+    - Archivos: N/A.
+    - Esfuerzo: Variable (depende del soporte de DMarket).
+- **[ ] Tarea: Implementar otros endpoints de DMarket (ej. crear/cancelar órdenes) - (Dependiente de la resolución de `get_account_balance`)**
+    - Descripción: Si se resuelve el acceso a los endpoints de cuenta, implementar la creación, consulta y cancelación de órdenes en DMarket.
     - Asistencia Gemini: (G-Code), (G-Research).
-    - Archivos: core/strategy_engine.py, config/config.ini.
+    - Archivos: core/dmarket_connector.py.
     - Esfuerzo: Alto.
-- **[ ] Tarea: Desarrollo del Módulo de Alertas (core/alerter.py).**
-    - Descripción: Implementar funciones para enviar notificaciones (email/Telegram).
+- **[ ] Tarea: Desarrollo de una Estrategia Simple Intra-DMarket (ej. Flipping Básico en DMarket).**
+    - Descripción: Si se pueden gestionar órdenes, desarrollar una lógica para identificar ítems con potencial de flipping dentro de DMarket (comprar bajo, vender alto en la misma plataforma).
+    - Asistencia Gemini: (G-Code), (G-Research).
+    - Archivos: core/strategy_engine.py (nuevo o adaptado), config/config.ini.
+    - Esfuerzo: Alto.
+- **[ ] Tarea: Almacenamiento de Transacciones de DMarket.**
+    - Descripción: Implementar un sistema simple (SQLite podría seguir siendo una opción) para registrar las transacciones realizadas a través de DMarket.
     - Asistencia Gemini: (G-Code).
-    - Archivos: core/alerter.py.
+    - Archivos: core/data_manager.py (simplificado), database/schema.sql (opcional).
     - Esfuerzo: Medio.
-- **[ ] Tarea: Creación del Modo Simulación ("Paper Trading").**
-    - Descripción: Registrar órdenes simuladas en BD local sin interactuar con APIs reales.
+- **[ ] Tarea: Modo Simulación para Estrategias Intra-DMarket.**
+    - Descripción: Adaptar o crear un modo de simulación para probar estrategias de DMarket sin ejecutar órdenes reales.
     - Asistencia Gemini: (G-Refactor).
-    - Archivos: Modificaciones en core/strategy_engine.py, core/data_manager.py, main.py.
-    - Esfuerzo: Alto.
-- **[ ] Tarea: Pruebas Intensivas de Arbitraje en Modo Simulación.**
-    - Descripción: Ejecutar bot en simulación, monitorear alertas, logs, BD.
-    - Asistencia Gemini: (G-Debug).
-    - Archivos: Logs, contenido de la BD.
+    - Archivos: Modificaciones en core/strategy_engine.py, core/data_manager.py.
     - Esfuerzo: Medio.
 
-## Fase 4: Expansión de Scraping (CSFloat, Buff163) y Estrategia de Flipping (Semanas 9-12)
-**Objetivo:** Añadir más fuentes de datos y la estrategia de flipping.
+## Fase 3: (Opcional) Mejoras, Dashboard y Documentación (Adaptado)
+**Objetivo:** Mejorar la usabilidad, el rendimiento y finalizar la documentación enfocada en DMarket.
 
-- **[ ] Tarea: Añadir Scrapers para CSFloat y Buff163 (core/market_scrapers.py).**
-    - Descripción: Investigar APIs/desarrollar scrapers, manejar acceso/idioma/conversión para Buff163, integrar en data_manager.
-    - Asistencia Gemini: (G-Research), (G-Code).
-    - Archivos: core/market_scrapers.py, core/data_manager.py, utils/helpers.py.
-    - Esfuerzo: Muy Alto.
-- **[ ] Tarea: Implementación de la Lógica de Flipping (core/strategy_engine.py).**
-    - Descripción: Identificar ítems subvaluados (precio vs. promedio histórico, atributos).
-    - Asistencia Gemini: (G-Code).
-    - Archivos: core/strategy_engine.py, config/config.ini.
-    - Esfuerzo: Alto.
-- **[ ] Tarea: Refinar data_manager.py para Soportar Más Fuentes y Precios Promedio.**
-    - Descripción: Asegurar que BD y funciones manejen todas las plataformas, implementar cálculo eficiente de precios promedio.
-    - Asistencia Gemini: (G-Refactor).
-    - Archivos: core/data_manager.py.
-    - Esfuerzo: Medio.
-- **[ ] Tarea: Expandir Modo Simulación para Estrategia de Flipping.**
-    - Descripción: Integrar lógica de flipping en modo simulación.
-    - Asistencia Gemini: (G-Debug).
-    - Archivos: core/strategy_engine.py, main.py.
-    - Esfuerzo: Medio.
-
-## Fase 5: Estrategia de Holding, Gestión de Riesgos Completa y KPIs (Semanas 13-16)
-**Objetivo:** Implementar la estrategia de inversión a largo plazo y un sistema robusto de gestión de riesgos y seguimiento de rendimiento.
-
-- **[ ] Tarea: Funcionalidad de Estrategia de Holding (core/strategy_engine.py).**
-    - Descripción: Definir skins objetivo y precios de compra, monitorear y alertar.
-    - Asistencia Gemini: (G-Code).
-    - Archivos: core/strategy_engine.py, config/config.ini.
-    - Esfuerzo: Medio.
-- **[ ] Tarea: Implementación Completa del Módulo de Gestión de Riesgos (core/risk_controller.py).**
-    - Descripción: Implementar reglas de gestión de capital, integrar en strategy_engine, lógica stop-loss/take-profit.
-    - Asistencia Gemini: (G-Code), (G-Refactor).
-    - Archivos: core/risk_controller.py, core/strategy_engine.py.
-    - Esfuerzo: Alto.
-- **[ ] Tarea: Desarrollo de Funciones para Cálculo y Registro de KPIs.**
-    - Descripción: Implementar funciones para calcular KPIs (ROI, P&L, etc.) desde tabla Transacciones.
-    - Asistencia Gemini: (G-Code).
-    - Archivos: core/data_manager.py (o utils/analytics.py).
-    - Esfuerzo: Medio.
-- **[ ] Tarea: Integración de KPIs en Alertas y Resúmenes.**
-    - Descripción: Modificar alerter.py para incluir KPIs en resúmenes.
-    - Asistencia Gemini: (G-Code).
-    - Archivos: core/alerter.py.
-    - Esfuerzo: Bajo.
-
-## Fase 6: (Opcional) Desarrollo de UI, Optimización y Documentación Final (Continuo, Semanas 17+)
-**Objetivo:** Mejorar la usabilidad, el rendimiento y finalizar la documentación.
-
-- **[ ] Tarea: Desarrollo de un Dashboard Básico (ej. con Streamlit).**
-    - Descripción: Interfaz para visualizar precios, oportunidades, estado del bot, KPIs.
+- **[ ] Tarea: Desarrollo de un Dashboard Básico (ej. con Streamlit) para DMarket.**
+    - Descripción: Interfaz para visualizar el balance de DMarket (si es accesible), precios de ítems de DMarket, historial de transacciones en DMarket.
     - Asistencia Gemini: (G-Code).
     - Archivos: Nuevo directorio dashboard_app/ con archivos de Streamlit.
     - Esfuerzo: Alto.
-- **[ ] Tarea: Optimización del Rendimiento.**
-    - Descripción: Perfilar código, identificar cuellos de botella, optimizar.
+- **[ ] Tarea: Optimización del Rendimiento del Conector DMarket.**
+    - Descripción: Perfilar código del conector DMarket, identificar cuellos de botella, optimizar.
     - Asistencia Gemini: (G-Research), (G-Refactor).
-    - Archivos: Todos los módulos principales.
-    - Esfuerzo: Medio-Alto (continuo).
-- **[ ] Tarea: Pruebas Exhaustivas y Refinamiento.**
-    - Descripción: Pruebas de larga duración en simulación, refinar umbrales y parámetros.
+    - Archivos: core/dmarket_connector.py.
+    - Esfuerzo: Medio.
+- **[ ] Tarea: Pruebas Exhaustivas y Refinamiento (Enfocado en DMarket).**
+    - Descripción: Pruebas de larga duración en simulación con DMarket, refinar umbrales y parámetros de estrategias.
     - Asistencia Gemini: N/A.
     - Archivos: config/config.ini, logs.
-    - Esfuerzo: Alto (continuo).
-- **[ ] Tarea: Revisión y Finalización de la Documentación.**
-    - Descripción: README completo, docstrings, comentarios, guía de uso.
+    - Esfuerzo: Medio (continuo).
+- **[ ] Tarea: Revisión y Finalización de la Documentación (Enfocado en DMarket).**
+    - Descripción: README completo, docstrings, comentarios, guía de uso para las funcionalidades de DMarket.
     - Asistencia Gemini: (G-Doc).
-    - Archivos: README.md, todos los archivos .py.
+    - Archivos: README.md, todos los archivos .py relevantes.
     - Esfuerzo: Medio.
-- **[ ] Tarea: Considerar "Paper Trading" con Capital Real Limitado.**
-    - Descripción: Operar con capital real pequeño bajo supervisión si la simulación es rentable.
-    - Asistencia Gemini: N/A.
-    - Archivos: N/A.
-    - Esfuerzo: Alto.
 
 ## Consideraciones Continuas (Durante todo el proyecto):
 - **[ ] Pruebas Rigurosas:** (G-Test)
