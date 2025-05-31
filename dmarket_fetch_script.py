@@ -132,4 +132,4 @@ def run_test():
     logger.info("--- Prueba de Obtención de Balance Finalizada ---")
 
 if __name__ == "__main__":
-    run_test() 
+    run_test()
