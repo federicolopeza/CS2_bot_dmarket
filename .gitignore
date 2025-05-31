@@ -1,0 +1,33 @@
+# Archivos de entorno
+.env
+
+# Archivos específicos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Directorios de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Entornos virtuales de Python
+.venv/
+venv/
+ENV/
+env/
+
+# Archivos de configuración de IDEs
+.idea/
+.vscode/
+
+# Logs
+logs/
+*.log
+
+# Bases de datos SQLite
+*.db
+*.sqlite3
+
+# Otros
+.pytest_cache/ 
