@@ -73,8 +73,8 @@ class StrategyEngine:
 
     def _fetch_and_cache_fee_info(self, game_id: str) -> bool:
         """
-        Obtiene y cachea las tasas de comisión de DMarket para un juego.
-        Retorna True si fue exitoso, False en caso contrario.
+        Obtiene y cachea la información de tasas de comisión de DMarket para un juego específico.
+        Robusto ante errores de API.
         """
         if self.dmarket_fee_info and self.dmarket_fee_info.get("gameId") == game_id:
             logger.debug(f"Usando tasas de comisión cacheadas para el juego {game_id}.")
@@ -85,15 +85,28 @@ class StrategyEngine:
 
         if response and "error" not in response and "rates" in response:
             self.dmarket_fee_info = response
-            # Podríamos parsear y almacenar las tasas de una forma más estructurada si es necesario.
-            # Por ahora, guardamos la respuesta completa.
-            # Ejemplo: self.dmarket_sale_fee_percentage = float(response['rates'][0]['amount'])
             logger.info(f"Tasas de comisión obtenidas y cacheadas para {game_id}: {self.dmarket_fee_info}")
             return True
         else:
-            logger.error(f"No se pudieron obtener las tasas de comisión para {game_id}. Respuesta: {response}")
-            self.dmarket_fee_info = None # Invalidar cache si falla
-            return False
+            logger.warning(f"No se pudieron obtener las tasas de comisión para {game_id}. Usando valores por defecto.")
+            logger.debug(f"Respuesta de fee-rates: {response}")
+            
+            # Usar configuración por defecto para fees si la API falla
+            self.dmarket_fee_info = {
+                "gameId": game_id,
+                "rates": [
+                    {
+                        "type": "exchange",
+                        "amount": "0.075"  # 7.5% por defecto
+                    }
+                ],
+                "minCommission": {
+                    "currency": "USD",
+                    "amount": "0.01"  # $0.01 mínimo
+                }
+            }
+            logger.info(f"Usando tasas de comisión por defecto: {self.dmarket_fee_info}")
+            return True  # Devolver True porque tenemos valores por defecto
 
     def _calculate_dmarket_sale_fee_cents(self, item_price_cents: int) -> int:
         """
@@ -866,10 +879,9 @@ class StrategyEngine:
 
         game_id = self.config.get("game_id", DEFAULT_GAME_ID)
         
-        # Asegurar que las tasas de comisión estén cargadas
-        if not self._fetch_and_cache_fee_info(game_id):
-            logger.error("No se pudieron cargar las tasas de comisión. Abortando ejecución de estrategias.")
-            return all_opportunities
+        # Asegurar que las tasas de comisión estén cargadas (ahora siempre devuelve True con valores por defecto)
+        self._fetch_and_cache_fee_info(game_id)
+        logger.info("Tasas de comisión cargadas (reales o por defecto). Continuando con estrategias...")
 
         for i, item_title in enumerate(items_to_scan):
             logger.info(f"Procesando ítem {i+1}/{len(items_to_scan)}: {item_title}")
