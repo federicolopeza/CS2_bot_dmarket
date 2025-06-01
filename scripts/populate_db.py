@@ -1,6 +1,10 @@
 import logging
 import os
+import sys
 from dotenv import load_dotenv
+
+# Agregar el directorio padre al path para encontrar los módulos
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.dmarket_connector import DMarketAPI
 from core.data_manager import get_db, add_or_update_skin, add_price_record, init_db

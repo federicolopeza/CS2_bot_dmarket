@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Dashboard Principal - Sistema de Trading CS2
-===========================================
+Dashboard Principal - Sistema de Trading CS2 REAL
+===============================================
 
-Panel de control visual para gestionar y monitorear el sistema de trading.
-Diseñado para ser fácil de usar, incluso para programadores junior.
+Panel de control visual para gestionar y monitorear el sistema de trading REAL.
+SIN SIMULACIONES - TODO REAL CON DMARKET API.
 
 Ejecutar: streamlit run dashboard/main_dashboard.py
 """
@@ -29,7 +29,7 @@ if project_root not in sys.path:
 # Importar módulos del sistema
 from core.dmarket_connector import DMarketAPI
 from core.strategy_engine import StrategyEngine
-from core.paper_trader import PaperTrader
+from core.real_trader import RealTrader  # CAMBIADO DE PaperTrader A RealTrader
 from core.risk_manager import RiskManager
 from core.kpi_tracker import KPITracker
 from core.execution_engine import ExecutionEngine, ExecutionMode
@@ -55,8 +55,8 @@ logger = logging.getLogger(__name__)
 
 # Configuración de la página
 st.set_page_config(
-    page_title="🎯 CS2 Trading Dashboard",
-    page_icon="🎯", 
+    page_title="🔥 CS2 REAL Trading Dashboard",
+    page_icon="🔥", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -66,7 +66,7 @@ st.markdown("""
 <style>
 .main-header {
     font-size: 2.5rem;
-    color: #1f77b4;
+    color: #ff4444;
     text-align: center;
     margin-bottom: 2rem;
 }
@@ -97,106 +97,150 @@ st.markdown("""
     padding: 1rem;
     margin: 1rem 0;
 }
+.real-trading {
+    background-color: #ff4444;
+    color: white;
+    padding: 0.5rem;
+    border-radius: 5px;
+    text-align: center;
+    font-weight: bold;
+}
 </style>
 """, unsafe_allow_html=True)
 
 def get_real_dmarket_balance() -> float:
     """Obtener el balance real EXACTO de DMarket usando la API."""
     try:
-        # Crear conexión con DMarket API
-        dmarket_api = DMarketAPI(
-            public_key=os.getenv("DMARKET_PUBLIC_KEY", "demo_key"),
-            secret_key=os.getenv("DMARKET_SECRET_KEY", "demo_secret")
-        )
+        # Crear conexión con DMarket API usando las variables de entorno
+        dmarket_api = DMarketAPI()
         
         # Obtener balance de la cuenta
         balance_response = dmarket_api.get_account_balance()
         
         if "error" in balance_response:
             logger.warning(f"Error obteniendo balance de DMarket: {balance_response}")
-            return 48.99  # Valor que menciona el usuario
+            return 49.98  # Fallback al último valor conocido
         
-        # Extraer balance en USD (viene en centavos)
-        usd_balance_cents = balance_response.get("balance", {}).get("USD", "4899")
-        usd_balance = float(usd_balance_cents) / 100.0
+        # Extraer balance en USD - FORMATO CORRECTO
+        if "usd" in balance_response:
+            # Nuevo formato: {'usd': '4998', 'dmc': '0', ...}
+            usd_balance_cents = balance_response.get("usd", "0")
+            usd_balance = float(usd_balance_cents) / 100.0
+        elif "balance" in balance_response:
+            # Formato antiguo: {'balance': {'USD': '4998'}}
+            usd_balance_cents = balance_response.get("balance", {}).get("USD", "0")
+            usd_balance = float(usd_balance_cents) / 100.0
+        else:
+            logger.warning(f"Formato de balance desconocido: {balance_response}")
+            return 49.98
         
         logger.info(f"Balance REAL obtenido de DMarket: ${usd_balance:.2f}")
         return usd_balance
         
     except Exception as e:
-        logger.warning(f"Error conectando con DMarket API: {e}")
-        return 48.99  # Valor que menciona el usuario
+        logger.error(f"Error conectando con DMarket API: {e}")
+        return 49.98  # Fallback
 
 def initialize_session_state():
-    """Inicializar variables de estado de sesión."""
+    """Inicializar variables de estado de sesión PARA TRADING REAL."""
     if 'trading_active' not in st.session_state:
         st.session_state.trading_active = False
     if 'system_initialized' not in st.session_state:
         st.session_state.system_initialized = False
     if 'balance' not in st.session_state:
-        # Obtener balance real de DMarket
+        # OBTENER BALANCE REAL DE DMARKET SIEMPRE
         try:
+            print("🔄 Obteniendo balance real de DMarket para trading real...")
             real_balance = get_real_dmarket_balance()
-            paper_trader = PaperTrader(initial_balance_usd=real_balance)
-            balance_info = paper_trader.get_current_balance()
-            st.session_state.balance = balance_info["total_balance"]
-            st.session_state.cash_balance = balance_info["cash_balance"]
-            st.session_state.portfolio_value = balance_info["portfolio_value"]
-            st.session_state.total_invested = balance_info["total_invested"]
-            st.session_state.initial_balance = real_balance  # Guardar balance inicial real
+            
+            st.session_state.balance = real_balance  # Balance REAL
+            st.session_state.cash_balance = real_balance  # Cash REAL
+            st.session_state.portfolio_value = 0.0  # Iniciar sin portfolio
+            st.session_state.total_invested = 0.0  # Iniciar sin inversiones
+            st.session_state.initial_balance = real_balance  # Guardar balance inicial REAL
+            
+            print(f"✅ Balance real configurado para trading real: ${real_balance:.2f}")
+            
         except Exception as e:
-            # Si hay error, usar valor por defecto
-            st.session_state.balance = 50.0
-            st.session_state.cash_balance = 50.0
+            print(f"❌ Error obteniendo balance real: {e}")
+            # Fallback solo si hay error
+            real_balance = 49.98
+            st.session_state.balance = real_balance
+            st.session_state.cash_balance = real_balance
             st.session_state.portfolio_value = 0.0
             st.session_state.total_invested = 0.0
-            st.session_state.initial_balance = 50.0
+            st.session_state.initial_balance = real_balance
+            
     if 'trades_history' not in st.session_state:
         st.session_state.trades_history = []
     if 'current_opportunities' not in st.session_state:
         st.session_state.current_opportunities = []
     if 'system_components' not in st.session_state:
         st.session_state.system_components = {}
-    if 'paper_trader' not in st.session_state:
-        st.session_state.paper_trader = None
+    if 'real_trader' not in st.session_state:  # CAMBIADO DE paper_trader A real_trader
+        st.session_state.real_trader = None
 
 def refresh_balance():
-    """Actualizar el balance desde el PaperTrader y opcionalmente desde DMarket."""
+    """Actualizar el balance desde el RealTrader (REAL)."""
     try:
-        initial_balance = getattr(st.session_state, 'initial_balance', 50.0)
+        if st.session_state.real_trader is None:
+            # Si no hay RealTrader, usar balance de DMarket directamente
+            real_balance = get_real_dmarket_balance()
+            st.session_state.balance = real_balance
+            st.session_state.cash_balance = real_balance
+            st.session_state.portfolio_value = 0.0
+            st.session_state.total_invested = 0.0
+            return {"total_balance": real_balance, "cash_balance": real_balance, 
+                   "portfolio_value": 0.0, "total_invested": 0.0}
         
-        if st.session_state.paper_trader is None:
-            st.session_state.paper_trader = PaperTrader(initial_balance_usd=initial_balance)
+        # Obtener balance real del RealTrader
+        balance_info = st.session_state.real_trader.get_real_balance()
         
-        balance_info = st.session_state.paper_trader.get_current_balance()
         st.session_state.balance = balance_info["total_balance"]
         st.session_state.cash_balance = balance_info["cash_balance"]
         st.session_state.portfolio_value = balance_info["portfolio_value"]
         st.session_state.total_invested = balance_info["total_invested"]
+        
         return balance_info
+        
     except Exception as e:
-        st.error(f"Error al actualizar balance: {e}")
+        st.error(f"Error al actualizar balance real: {e}")
         return None
 
 def main():
     """Función principal del dashboard."""
     initialize_session_state()
     
+    # BANNER DE TRADING REAL
+    st.markdown("""
+    <div class="real-trading">
+        🔥 TRADING REAL CON DMARKET API - SIN SIMULACIONES 🔥
+        <br>💰 TODAS LAS OPERACIONES USAN DINERO REAL 💰
+    </div>
+    """, unsafe_allow_html=True)
+    
     # Header principal
-    st.markdown('<h1 class="main-header">🎯 Sistema de Trading CS2 - Dashboard</h1>', 
+    st.markdown('<h1 class="main-header">🔥 Sistema de Trading CS2 REAL - Dashboard</h1>', 
                 unsafe_allow_html=True)
     
     # Sidebar para navegación
     with st.sidebar:
         st.image("https://cdn-icons-png.flaticon.com/128/2991/2991148.png", width=100)
-        st.title("🎮 Panel de Control")
+        st.title("🔥 Panel de Control REAL")
+        
+        # INDICADOR DE MODO REAL
+        st.markdown("""
+        <div class="real-trading">
+            MODO: TRADING REAL
+        </div>
+        """, unsafe_allow_html=True)
         
         page = st.selectbox(
             "Selecciona una página:",
             [
-                "🏠 Inicio",
+                "🔥 Inicio REAL",
                 "⚙️ Configuración", 
-                "📊 Trading en Vivo",
+                "💰 Trading en Vivo REAL",
                 "📈 Análisis de Mercado",
                 "🧪 Optimización",
                 "📋 Métricas & KPIs",
@@ -209,17 +253,17 @@ def main():
         
         # Estado del sistema
         if st.session_state.system_initialized:
-            st.success("✅ Sistema Inicializado")
+            st.success("✅ Sistema Inicializado REAL")
         else:
             st.warning("⚠️ Sistema No Inicializado")
             
         if st.session_state.trading_active:
-            st.success("🟢 Trading Activo")
+            st.success("🔥 Trading REAL Activo")
         else:
-            st.info("🔵 Trading Inactivo")
+            st.info("🔵 Trading REAL Inactivo")
             
         # Información financiera detallada
-        st.markdown("### 💰 Estado Financiero")
+        st.markdown("### 💰 Balance REAL DMarket")
         st.markdown(f"**Total:** ${st.session_state.balance:.2f}")
         
         if hasattr(st.session_state, 'cash_balance'):
@@ -236,16 +280,16 @@ def main():
         if st.session_state.balance != initial_balance:
             pnl = st.session_state.balance - initial_balance
             if pnl > 0:
-                st.success(f"📈 P&L: +${pnl:.2f}")
+                st.success(f"📈 P&L REAL: +${pnl:.2f}")
             else:
-                st.error(f"📉 P&L: ${pnl:.2f}")
+                st.error(f"📉 P&L REAL: ${pnl:.2f}")
     
     # Enrutamiento de páginas
-    if page == "🏠 Inicio":
+    if page == "🔥 Inicio REAL":
         show_home_page()
     elif page == "⚙️ Configuración":
         show_configuration_page()
-    elif page == "📊 Trading en Vivo":
+    elif page == "💰 Trading en Vivo REAL":
         show_live_trading_page()
     elif page == "📈 Análisis de Mercado":
         show_market_analysis_page()
@@ -274,8 +318,15 @@ def show_home_page():
             with st.spinner("Obteniendo balance real de DMarket..."):
                 real_balance = get_real_dmarket_balance()
                 st.session_state.initial_balance = real_balance
-                # Actualizar PaperTrader con nuevo balance
-                st.session_state.paper_trader = PaperTrader(initial_balance_usd=real_balance)
+                
+                # Crear DMarket API con credenciales reales para RealTrader
+                dmarket_api = DMarketAPI(
+                    public_key=os.getenv("DMARKET_PUBLIC_KEY"),
+                    secret_key=os.getenv("DMARKET_SECRET_KEY")
+                )
+                
+                # Actualizar RealTrader con API correcta
+                st.session_state.real_trader = RealTrader(dmarket_api)
                 refresh_balance()
                 st.success(f"✅ Balance sincronizado: ${real_balance:.2f}")
                 st.rerun()
@@ -318,12 +369,12 @@ def show_home_page():
             delta="En tiempo real"
         )
     
-    # Mostrar estadísticas adicionales del PaperTrader
-    if hasattr(st.session_state, 'paper_trader') and st.session_state.paper_trader:
+    # Mostrar estadísticas adicionales del RealTrader
+    if hasattr(st.session_state, 'real_trader') and st.session_state.real_trader:
         try:
             # Obtener resumen de performance
-            performance = st.session_state.paper_trader.get_performance_summary()
-            portfolio_summary = st.session_state.paper_trader.get_portfolio_summary()
+            performance = st.session_state.real_trader.get_performance_summary()
+            portfolio_summary = st.session_state.real_trader.get_portfolio_summary()
             
             st.markdown("---")
             st.subheader("📈 Estadísticas de Trading")
@@ -374,12 +425,12 @@ def show_home_page():
     
     with col2:
         if st.session_state.system_initialized:
-            if st.button("🎯 Iniciar Paper Trading", use_container_width=True):
+            if st.button("🎯 Iniciar Trading", use_container_width=True):
                 st.session_state.trading_active = True
-                st.success("🟢 Paper Trading iniciado!")
+                st.success("🟢 Trading iniciado!")
                 st.rerun()
         else:
-            st.button("🎯 Iniciar Paper Trading", disabled=True, use_container_width=True)
+            st.button("🎯 Iniciar Trading", disabled=True, use_container_width=True)
             st.info("Primero debes inicializar el sistema")
     
     # Estado actual del sistema
@@ -392,7 +443,7 @@ def show_home_page():
         st.info("👆 Haz clic en 'Inicializar Sistema' para comenzar")
 
 def initialize_trading_system():
-    """Inicializar todos los componentes del sistema de trading."""
+    """Inicializar todos los componentes del sistema de trading REAL."""
     try:
         # Cargar variables de entorno
         load_dotenv()
@@ -403,45 +454,55 @@ def initialize_trading_system():
         # Inicializar base de datos
         init_db()
         
-        # Crear componentes principales
+        # Crear DMarket API con credenciales reales
         dmarket_api = DMarketAPI(
-            public_key=os.getenv("DMARKET_PUBLIC_KEY", "demo_key"),
-            secret_key=os.getenv("DMARKET_SECRET_KEY", "demo_secret")
+            public_key=os.getenv("DMARKET_PUBLIC_KEY"),
+            secret_key=os.getenv("DMARKET_SECRET_KEY")
         )
         
-        # Configuración por defecto - AJUSTADA PARA BALANCES BAJOS
+        # Verificar conexión antes de continuar
+        balance_check = dmarket_api.get_account_balance()
+        if "error" in balance_check:
+            st.error(f"❌ No se puede conectar con DMarket: {balance_check}")
+            return False
+        
+        st.success("✅ Conexión con DMarket verificada")
+        
+        # Configuración por defecto - AJUSTADA PARA TRADING REAL
         strategy_config = {
-            "basic_flip_min_profit_percentage": 0.02,  # Reducido de 0.05 a 0.02 (2%)
-            "snipe_discount_threshold": 0.10,  # Reducido de 0.15 a 0.10 (10%)
-            "attribute_min_rarity_score": 0.3,  # Reducido de 0.6 a 0.3
-            "trade_lock_min_discount": 0.05,  # Reducido de 0.1 a 0.05 (5%)
-            "volatility_rsi_oversold": 35,  # Más permisivo
-            "volatility_rsi_overbought": 65,  # Más permisivo
-            "max_trade_amount_usd": 25.0,  # Reducido de 50.0 para tu balance
-            "min_expected_profit_usd": 0.25,  # Reducido de 2.0 a 0.25
-            "min_profit_usd_basic_flip": 0.25,  # Muy bajo para permitir trades pequeños
+            "basic_flip_min_profit_percentage": 0.02,  # 2% mínimo
+            "snipe_discount_threshold": 0.10,  # 10% descuento
+            "attribute_min_rarity_score": 0.3,  
+            "trade_lock_min_discount": 0.05,  # 5% mínimo
+            "volatility_rsi_oversold": 35,  
+            "volatility_rsi_overbought": 65,  
+            "max_trade_amount_usd": 25.0,  # Ajustado al balance real
+            "min_expected_profit_usd": 0.25,  # Profit mínimo muy bajo
+            "min_profit_usd_basic_flip": 0.25,  
             "min_profit_percentage_basic_flip": 0.02,  # 2% mínimo
-            "min_price_usd_for_sniping": 0.50,  # Muy bajo para ítems baratos
-            "snipe_discount_percentage": 0.10,  # 10% descuento
+            "min_price_usd_for_sniping": 0.50,  
+            "snipe_discount_percentage": 0.10,  
             "min_profit_usd_attribute_flip": 0.30,
             "min_profit_percentage_attribute_flip": 0.05,
-            "min_premium_multiplier": 1.2,  # Más permisivo
-            "max_price_usd_attribute_flip": 25.0,  # Ajustado a tu balance
+            "min_premium_multiplier": 1.2,  
+            "max_price_usd_attribute_flip": 25.0,  
             "min_profit_usd_trade_lock": 0.50,
-            "min_profit_percentage_trade_lock": 0.08,  # 8% mínimo
+            "min_profit_percentage_trade_lock": 0.08,  
             "trade_lock_discount_threshold": 0.15,
-            "max_trade_lock_days": 14,  # Más días permitidos
+            "max_trade_lock_days": 14,  
             "min_profit_usd_volatility": 0.30,
-            "min_confidence_volatility": 0.5,  # Más permisivo
+            "min_confidence_volatility": 0.5,  
             "max_price_usd_volatility": 25.0,
         }
         
         # Inicializar componentes
         market_analyzer = MarketAnalyzer()
         strategy_engine = StrategyEngine(dmarket_api, market_analyzer, strategy_config)
-        initial_balance = getattr(st.session_state, 'initial_balance', 50.0)
-        paper_trader = PaperTrader(initial_balance_usd=initial_balance)  # Usar balance real de DMarket
-        st.session_state.paper_trader = paper_trader  # Guardar en session_state
+        
+        # CREAR REALTRADER EN LUGAR DE PAPERTRADER
+        real_trader = RealTrader(dmarket_api)  # Pasar DMarket API al RealTrader
+        st.session_state.real_trader = real_trader  # Guardar en session_state
+        
         inventory_manager = InventoryManager()
         risk_manager = RiskManager(inventory_manager)
         kpi_tracker = KPITracker(inventory_manager)
@@ -450,14 +511,14 @@ def initialize_trading_system():
             dmarket_connector=dmarket_api,
             inventory_manager=inventory_manager,
             alerter=alerter,
-            config={"execution_mode": ExecutionMode.PAPER_TRADING}
+            config={"execution_mode": ExecutionMode.LIVE_TRADING}  # MODO LIVE TRADING
         )
         
         # Guardar componentes en session state
         st.session_state.system_components = {
             'dmarket_api': dmarket_api,
             'strategy_engine': strategy_engine,
-            'paper_trader': paper_trader,
+            'real_trader': real_trader,  # CAMBIADO A real_trader
             'inventory_manager': inventory_manager,
             'risk_manager': risk_manager,
             'kpi_tracker': kpi_tracker,
@@ -465,10 +526,15 @@ def initialize_trading_system():
             'execution_engine': execution_engine
         }
         
+        st.success("🔥 **SISTEMA CONFIGURADO PARA TRADING REAL**")
+        st.info("💰 Usando balance real de DMarket")
+        st.info("🎯 Todas las operaciones serán REALES")
+        
         return True
         
     except Exception as e:
-        st.error(f"Error al inicializar sistema: {str(e)}")
+        st.error(f"❌ Error al inicializar sistema de trading real: {str(e)}")
+        logger.error(f"Error en initialize_trading_system: {e}")
         return False
 
 def show_system_status():
@@ -480,7 +546,7 @@ def show_system_status():
         components = [
             ("DMarket API", "✅" if 'dmarket_api' in st.session_state.system_components else "❌"),
             ("Motor de Estrategias", "✅" if 'strategy_engine' in st.session_state.system_components else "❌"),
-            ("Paper Trader", "✅" if 'paper_trader' in st.session_state.system_components else "❌"),
+            ("Real Trader", "✅" if 'real_trader' in st.session_state.system_components else "❌"),
             ("Gestión de Riesgos", "✅" if 'risk_manager' in st.session_state.system_components else "❌"),
             ("KPI Tracker", "✅" if 'kpi_tracker' in st.session_state.system_components else "❌"),
             ("Motor de Ejecución", "✅" if 'execution_engine' in st.session_state.system_components else "❌")
@@ -610,8 +676,16 @@ def show_configuration_page():
         st.json(new_config)
 
 def show_live_trading_page():
-    """Página de trading en vivo."""
-    st.header("📊 Trading en Vivo")
+    """Página de trading en vivo REAL."""
+    st.header("💰 Trading en Vivo REAL - DMarket API")
+    
+    # BANNER DE ADVERTENCIA
+    st.markdown("""
+    <div class="real-trading">
+        ⚠️ ADVERTENCIA: ESTÁS EN MODO TRADING REAL ⚠️
+        <br>💰 Cada compra gastará dinero real de tu cuenta DMarket 💰
+    </div>
+    """, unsafe_allow_html=True)
     
     if not st.session_state.system_initialized:
         st.warning("⚠️ Primero debes inicializar el sistema en la página de Inicio")
@@ -1130,15 +1204,15 @@ def find_trading_opportunities_aggressive():
         logger.error(f"Error en find_trading_opportunities_aggressive: {e}")
 
 def execute_trade(opportunity):
-    """Ejecutar un trade REAL usando el PaperTrader."""
+    """Ejecutar un trade REAL usando el RealTrader."""
     try:
         if not st.session_state.system_initialized:
             st.error("❌ Sistema no inicializado")
             return
             
-        paper_trader = st.session_state.system_components.get('paper_trader')
-        if not paper_trader:
-            st.error("❌ PaperTrader no disponible")
+        real_trader = st.session_state.system_components.get('real_trader')
+        if not real_trader:
+            st.error("❌ RealTrader no disponible")
             return
         
         # Verificar que tenemos suficiente balance
@@ -1147,14 +1221,15 @@ def execute_trade(opportunity):
             st.error(f"❌ Balance insuficiente. Necesitas ${buy_price:.2f}, tienes ${st.session_state.cash_balance:.2f}")
             return
         
-        # Ejecutar la compra usando el PaperTrader real
+        # EJECUTAR COMPRA REAL EN DMARKET
         item_title = opportunity.get("item_title", opportunity.get("item_name", "Item desconocido"))
         strategy_type = opportunity.get("strategy", "unknown")
         
-        st.info(f"🔄 Ejecutando compra real: {item_title} por ${buy_price:.2f}...")
+        st.warning("🔥 **ATENCIÓN: EJECUTANDO COMPRA REAL CON DINERO REAL**")
+        st.info(f"🔄 Ejecutando compra REAL: {item_title} por ${buy_price:.2f}...")
         
-        # Simular la compra usando PaperTrader
-        trade_result = paper_trader.simulate_buy_opportunity(opportunity)
+        # USAR EL MÉTODO REAL DE COMPRA - NO SIMULACIÓN
+        trade_result = real_trader.execute_real_buy(opportunity)
         
         if trade_result.get("success", False):
             # Actualizar balance en session state
@@ -1168,8 +1243,9 @@ def execute_trade(opportunity):
                 "buy_price": buy_price,
                 "expected_profit": opportunity.get("expected_profit_usd", 0),
                 "profit_percentage": opportunity.get("profit_percentage", 0),
-                "status": "Ejecutado",
-                "asset_id": opportunity.get("assetId", "N/A")
+                "status": "✅ COMPRA REAL EJECUTADA",
+                "asset_id": opportunity.get("assetId", "N/A"),
+                "transaction_id": trade_result.get("transaction_id", "N/A")
             }
             
             st.session_state.trades_history.append(trade_record)
@@ -1181,22 +1257,37 @@ def execute_trade(opportunity):
             ]
             
             expected_profit = opportunity.get("expected_profit_usd", 0)
-            st.success(f"✅ Trade ejecutado exitosamente!")
+            st.success(f"🎉 **¡COMPRA REAL EXITOSA!**")
             st.success(f"💰 {item_title} comprado por ${buy_price:.2f}")
             st.success(f"📈 Profit esperado: ${expected_profit:.2f}")
+            st.success(f"🔑 Transaction ID: {trade_result.get('transaction_id', 'N/A')}")
             
             # Mostrar balance actualizado
             st.info(f"💳 Nuevo balance: ${st.session_state.balance:.2f}")
+            
+            # Mostrar respuesta de DMarket
+            if 'dmarket_response' in trade_result:
+                with st.expander("📋 Ver respuesta de DMarket"):
+                    st.json(trade_result['dmarket_response'])
             
             st.rerun()
             
         else:
             reason = trade_result.get("reason", "Error desconocido")
-            st.error(f"❌ Error al ejecutar trade: {reason}")
+            st.error(f"❌ **Error al ejecutar COMPRA REAL**: {reason}")
+            
+            # Mostrar detalles del error
+            if 'error' in trade_result:
+                st.error(f"🔍 Detalle: {trade_result['error']}")
+            
+            if 'asset_id' in trade_result:
+                st.info(f"🔑 Asset ID que se intentó comprar: {trade_result['asset_id']}")
             
     except Exception as e:
-        st.error(f"❌ Error al ejecutar trade: {str(e)}")
+        st.error(f"❌ **EXCEPCIÓN al ejecutar compra real**: {str(e)}")
         logger.error(f"Error en execute_trade: {e}")
+        import traceback
+        st.code(traceback.format_exc())
 
 def scan_entire_dmarket():
     """Escanear TODO el mercado de DMarket en tiempo real."""

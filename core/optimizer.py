@@ -1,747 +1,490 @@
 """
-Módulo de Optimización de Parámetros para Trading de Skins CS2
+Optimizador de Parámetros para Estrategias de Trading REAL
+=========================================================
 
-Este módulo implementa:
-- Backtesting de estrategias
-- Optimización de umbrales y parámetros
-- Análisis de configuraciones
-- Grid search y optimización bayesiana
-- Validación cruzada temporal
+Sistema para optimizar parámetros de estrategias usando TRADING REAL.
+ELIMINADA toda simulación - usa RealTrader con DMarket API.
 """
 
 import logging
-from typing import Dict, List, Tuple, Any, Optional, Union
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from enum import Enum
 import numpy as np
-import json
-import itertools
-from concurrent.futures import ThreadPoolExecutor
-import os
-import sys
-
-# Añadir el directorio raíz al path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+import random
+import time
+from typing import Dict, List, Any, Optional, Tuple, Union
+from enum import Enum
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.strategy_engine import StrategyEngine
+from core.real_trader import RealTrader  # CAMBIADO DE PaperTrader a RealTrader
 from core.market_analyzer import MarketAnalyzer
 from core.dmarket_connector import DMarketAPI
-from core.paper_trader import PaperTrader
-from core.data_manager import get_db, SkinsMaestra, PreciosHistoricos
-from utils.helpers import normalize_price_to_usd
+from core.data_manager import get_db, PreciosHistoricos, SkinsMaestra
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+class MetricType(Enum):
+    """Tipos de métricas para optimización."""
+    TOTAL_RETURN = "total_return"
+    SHARPE_RATIO = "sharpe_ratio"
+    WIN_RATE = "win_rate"
+    PROFIT_FACTOR = "profit_factor"
+    MAX_DRAWDOWN = "max_drawdown"
+    AVERAGE_TRADE = "average_trade"
+    TRADES_PER_DAY = "trades_per_day"
 
 class OptimizationMethod(Enum):
     """Métodos de optimización disponibles."""
     GRID_SEARCH = "grid_search"
     RANDOM_SEARCH = "random_search"
-    BAYESIAN = "bayesian"
-
-
-class MetricType(Enum):
-    """Tipos de métricas para optimización."""
-    ROI = "roi"
-    SHARPE_RATIO = "sharpe_ratio"
-    WIN_RATE = "win_rate"
-    PROFIT_FACTOR = "profit_factor"
-    MAX_DRAWDOWN = "max_drawdown"
-    TOTAL_PROFIT = "total_profit"
-
+    GENETIC_ALGORITHM = "genetic_algorithm"
+    BAYESIAN_OPTIMIZATION = "bayesian_optimization"
 
 @dataclass
 class ParameterRange:
-    """Definición de rango de parámetros para optimización."""
+    """Definición de rango para un parámetro."""
     name: str
     min_value: float
     max_value: float
-    step: float = 0.1
-    values: Optional[List[float]] = None
+    step: Optional[float] = None
+    values: Optional[List[Union[float, int, str]]] = None
     
-    def get_values(self) -> List[float]:
-        """Obtener lista de valores para el parámetro."""
-        if self.values:
-            return self.values
-        # Fix para generar rangos correctos
-        values = []
-        current = self.min_value
-        while current <= self.max_value + 1e-10:  # Small epsilon for float comparison
-            values.append(round(current, 3))
-            current += self.step
-        return values
-
-
-@dataclass
-class BacktestResult:
-    """Resultado de una prueba de backtesting."""
-    parameters: Dict[str, Any]
-    total_trades: int
-    winning_trades: int
-    losing_trades: int
-    total_profit_usd: float
-    total_fees_usd: float
-    roi_percentage: float
-    win_rate: float
-    profit_factor: float
-    sharpe_ratio: float
-    max_drawdown: float
-    avg_trade_duration_hours: float
-    best_trade_profit: float
-    worst_trade_loss: float
-    strategy_breakdown: Dict[str, Dict[str, Any]]
-    start_date: datetime
-    end_date: datetime
-    execution_time_seconds: float
-
-
 @dataclass
 class OptimizationResult:
-    """Resultado completo de optimización."""
-    method: OptimizationMethod
-    target_metric: MetricType
+    """Resultado de una optimización."""
     best_parameters: Dict[str, Any]
     best_score: float
-    all_results: List[BacktestResult]
-    parameter_ranges: List[ParameterRange]
-    optimization_time_seconds: float
-    total_combinations: int
-    convergence_data: Optional[Dict[str, List[float]]] = None
-
+    all_results: List[Dict[str, Any]]
+    optimization_time: float
+    total_evaluations: int
 
 class ParameterOptimizer:
     """
-    Optimizador de parámetros para estrategias de trading.
-    
-    Permite optimizar umbrales y configuraciones mediante:
-    - Backtesting histórico
-    - Grid search
-    - Random search
-    - Optimización bayesiana
+    Optimizador de parámetros para estrategias de trading REAL.
+    ELIMINADAS todas las simulaciones - usa RealTrader real.
     """
-    
-    def __init__(self, dmarket_connector: DMarketAPI):
+
+    def __init__(self, 
+                 dmarket_api: DMarketAPI,
+                 strategy_engine: StrategyEngine, 
+                 market_analyzer: MarketAnalyzer,
+                 config: Optional[Dict[str, Any]] = None):
         """
-        Inicializar optimizador.
+        Inicializar el optimizador para trading REAL.
         
         Args:
-            dmarket_connector: Conector a DMarket API
+            dmarket_api: Instancia del conector DMarket
+            strategy_engine: Motor de estrategias
+            market_analyzer: Analizador de mercado
+            config: Configuración del optimizador
         """
-        self.dmarket_connector = dmarket_connector
-        self.market_analyzer = MarketAnalyzer()
+        self.dmarket_api = dmarket_api
+        self.strategy_engine = strategy_engine
+        self.market_analyzer = market_analyzer
         
-        # Configuración por defecto
-        self.default_config = {
-            # Estrategia Basic Flip
-            "basic_flip_min_profit_percentage": 0.05,
-            "basic_flip_max_risk_ratio": 0.3,
-            
-            # Estrategia Sniping
-            "snipe_discount_threshold": 0.15,
-            "snipe_confidence_threshold": 0.7,
-            
-            # Estrategia Attribute Premium
-            "attribute_min_rarity_score": 0.6,
-            "attribute_min_premium_multiplier": 1.2,
-            
-            # Estrategia Trade Lock
-            "trade_lock_min_discount": 0.1,
-            "trade_lock_max_days": 7,
-            
-            # Estrategia Volatility
-            "volatility_rsi_oversold": 30,
-            "volatility_rsi_overbought": 70,
-            "volatility_bb_deviation": 2.0,
-            
-            # Configuración general
-            "max_trade_amount_usd": 50.0,
-            "min_expected_profit_usd": 2.0,
-            "max_portfolio_exposure": 0.8
+        self.config = config or self._get_default_config()
+        
+        # Configuración específica para trading real
+        self.real_trader_config = {
+            "max_position_size_usd": 25.0,  # Límite por posición
+            "max_total_exposure_pct": 60.0,  # Máximo 60% del capital en riesgo
+            "require_manual_confirmation": True,  # Confirmación manual para optimización
+            "auto_confirm_below_usd": 2.0,  # Auto-confirmar solo trades muy pequeños
+            "stop_loss_pct": -10.0,
+            "take_profit_pct": 15.0
         }
         
-        logger.info("ParameterOptimizer inicializado")
-    
-    def run_backtest(self, 
-                    parameters: Dict[str, Any],
-                    start_date: datetime,
-                    end_date: datetime,
-                    initial_balance: float = 1000.0,
-                    items_to_test: Optional[List[str]] = None) -> BacktestResult:
-        """
-        Ejecutar backtesting con parámetros específicos.
-        
-        Args:
-            parameters: Parámetros a probar
-            start_date: Fecha de inicio del backtest
-            end_date: Fecha de fin del backtest
-            initial_balance: Balance inicial para simulación
-            items_to_test: Lista de ítems específicos a probar
+        logger.info("🔥 ParameterOptimizer inicializado para TRADING REAL")
+        logger.warning("⚠️ ADVERTENCIA: Las optimizaciones usarán dinero REAL")
+
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Configuración por defecto del optimizador para trading real."""
+        return {
+            # Configuración para trading real
+            "use_real_trading": True,  # SIEMPRE real
+            "max_optimization_trades": 20,  # Límite de trades reales durante optimización
+            "max_optimization_amount_usd": 100.0,  # Máximo a gastar en optimización
+            "optimization_trade_size_usd": 5.0,  # Tamaño pequeño por trade
             
-        Returns:
-            BacktestResult con métricas del backtest
-        """
-        start_time = datetime.now()
-        
-        # Configurar paper trader con parámetros específicos
-        paper_trader = PaperTrader(initial_balance_usd=initial_balance)
-        
-        # Configurar strategy engine con parámetros personalizados
-        config = {**self.default_config, **parameters}
-        strategy_engine = StrategyEngine(
-            dmarket_connector=self.dmarket_connector,
-            config=config
-        )
-        
-        # Obtener datos históricos para el período
-        historical_data = self._get_historical_data(start_date, end_date, items_to_test)
-        
-        if not historical_data:
-            logger.warning("No hay datos históricos disponibles para el período especificado")
-            return self._create_empty_backtest_result(parameters, start_date, end_date, 0.0)
-        
-        logger.info(f"Ejecutando backtest con {len(historical_data)} puntos de datos históricos")
-        
-        trades_executed = 0
-        strategy_stats = {
-            "basic_flip": {"trades": 0, "profit": 0.0},
-            "snipe": {"trades": 0, "profit": 0.0},
-            "attribute_premium": {"trades": 0, "profit": 0.0},
-            "trade_lock": {"trades": 0, "profit": 0.0},
-            "volatility": {"trades": 0, "profit": 0.0}
+            # Configuración de optimización
+            "max_evaluations": 50,  # Reducido para trading real
+            "parallel_evaluations": 2,  # Máximo 2 evaluaciones paralelas
+            "timeout_per_evaluation": 300,  # 5 minutos por evaluación
+            
+            # Configuración de backtesting (usando datos históricos)
+            "backtest_days": 7,  # Solo 7 días de datos
+            "min_trades_for_evaluation": 3,  # Mínimo trades para evaluar
+            
+            # Configuración de métricas
+            "primary_metric": MetricType.TOTAL_RETURN,
+            "secondary_metrics": [MetricType.WIN_RATE, MetricType.SHARPE_RATIO],
+            
+            # Configuración de validación
+            "validation_split": 0.3,
+            "cross_validation_folds": 2,  # Reducido para trading real
+            
+            # Configuración de logging
+            "log_all_evaluations": True,
+            "save_intermediate_results": True
         }
-        
-        # Procesar datos históricos día por día
-        current_date = start_date
-        while current_date <= end_date:
-            daily_data = [d for d in historical_data 
-                         if d['date'].date() == current_date.date()]
-            
-            if daily_data:
-                # Simular oportunidades encontradas
-                for data_point in daily_data:
-                    opportunities = self._simulate_opportunities(
-                        data_point, strategy_engine, config
-                    )
-                    
-                    # Ejecutar trades simulados
-                    for opportunity in opportunities:
-                        if paper_trader.current_balance_usd >= opportunity.get('required_capital', 0):
-                            # Simular ejecución del trade
-                            trade_result = self._simulate_trade_execution(
-                                opportunity, paper_trader, data_point
-                            )
-                            
-                            if trade_result:
-                                trades_executed += 1
-                                strategy_name = opportunity.get('strategy', 'unknown')
-                                if strategy_name in strategy_stats:
-                                    strategy_stats[strategy_name]["trades"] += 1
-                                    strategy_stats[strategy_name]["profit"] += trade_result.get('profit', 0)
-            
-            current_date += timedelta(days=1)
-        
-        # Calcular métricas finales
-        execution_time = (datetime.now() - start_time).total_seconds()
-        
-        return self._calculate_backtest_metrics(
-            paper_trader, strategy_stats, parameters, 
-            start_date, end_date, execution_time
-        )
-    
-    def optimize_parameters(self,
-                           parameter_ranges: List[ParameterRange],
-                           target_metric: MetricType = MetricType.ROI,
-                           method: OptimizationMethod = OptimizationMethod.GRID_SEARCH,
-                           start_date: Optional[datetime] = None,
-                           end_date: Optional[datetime] = None,
-                           max_iterations: int = 100,
-                           n_jobs: int = 1) -> OptimizationResult:
+
+    def optimize_strategy_parameters(self,
+                                   strategy_name: str,
+                                   parameter_ranges: List[ParameterRange],
+                                   method: OptimizationMethod = OptimizationMethod.GRID_SEARCH,
+                                   target_metric: MetricType = MetricType.TOTAL_RETURN,
+                                   **kwargs) -> OptimizationResult:
         """
-        Optimizar parámetros de estrategias.
+        Optimizar parámetros de una estrategia usando TRADING REAL.
         
-        Args:
-            parameter_ranges: Rangos de parámetros a optimizar
-            target_metric: Métrica objetivo a maximizar
-            method: Método de optimización
-            start_date: Fecha de inicio para backtesting
-            end_date: Fecha de fin para backtesting
-            max_iterations: Máximo número de iteraciones
-            n_jobs: Número de trabajos paralelos
-            
-        Returns:
-            OptimizationResult con mejores parámetros encontrados
+        ADVERTENCIA: Esto ejecutará trades REALES para evaluar parámetros.
         """
-        start_time = datetime.now()
+        logger.warning("🔥 INICIANDO OPTIMIZACIÓN CON TRADING REAL")
+        logger.warning("💰 Esto ejecutará trades REALES con dinero REAL")
         
-        # Configurar fechas por defecto (últimos 3 meses)
-        if not end_date:
-            end_date = datetime.now(timezone.utc)
-        if not start_date:
-            start_date = end_date - timedelta(days=90)
+        start_time = time.time()
         
-        logger.info(f"Iniciando optimización de parámetros usando {method.value}")
-        logger.info(f"Período de backtesting: {start_date} a {end_date}")
-        logger.info(f"Métrica objetivo: {target_metric.value}")
+        # Verificar balance antes de optimizar
+        initial_balance = self._get_current_balance()
+        if initial_balance < self.config["max_optimization_amount_usd"]:
+            raise ValueError(f"Balance insuficiente para optimización: ${initial_balance:.2f} < ${self.config['max_optimization_amount_usd']:.2f}")
         
-        # Generar combinaciones de parámetros
-        parameter_combinations = self._generate_parameter_combinations(
-            parameter_ranges, method, max_iterations
-        )
+        logger.info(f"💰 Balance inicial para optimización: ${initial_balance:.2f}")
         
-        logger.info(f"Evaluando {len(parameter_combinations)} combinaciones de parámetros")
-        
-        # Ejecutar backtests
-        all_results = []
-        
-        if n_jobs == 1:
-            # Ejecución secuencial
-            for i, params in enumerate(parameter_combinations):
-                logger.info(f"Evaluando combinación {i+1}/{len(parameter_combinations)}")
-                result = self.run_backtest(params, start_date, end_date)
-                all_results.append(result)
-        else:
-            # Ejecución paralela
-            with ThreadPoolExecutor(max_workers=n_jobs) as executor:
-                futures = [
-                    executor.submit(self.run_backtest, params, start_date, end_date)
-                    for params in parameter_combinations
-                ]
+        try:
+            if method == OptimizationMethod.GRID_SEARCH:
+                result = self._grid_search_real(strategy_name, parameter_ranges, target_metric)
+            elif method == OptimizationMethod.RANDOM_SEARCH:
+                result = self._random_search_real(strategy_name, parameter_ranges, target_metric, **kwargs)
+            elif method == OptimizationMethod.GENETIC_ALGORITHM:
+                result = self._genetic_algorithm_real(strategy_name, parameter_ranges, target_metric, **kwargs)
+            else:
+                raise ValueError(f"Método de optimización no soportado para trading real: {method}")
+            
+            optimization_time = time.time() - start_time
+            result.optimization_time = optimization_time
+            
+            final_balance = self._get_current_balance()
+            total_spent = initial_balance - final_balance
+            
+            logger.info(f"🔥 OPTIMIZACIÓN REAL COMPLETADA")
+            logger.info(f"⏰ Tiempo: {optimization_time:.2f} segundos")
+            logger.info(f"💰 Dinero gastado: ${total_spent:.2f}")
+            logger.info(f"🎯 Mejor score: {result.best_score:.4f}")
+            logger.info(f"📊 Evaluaciones: {result.total_evaluations}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error en optimización real: {e}")
+            raise
+
+    def _get_current_balance(self) -> float:
+        """Obtener balance actual real de DMarket."""
+        try:
+            balance_response = self.dmarket_api.get_account_balance()
+            if "error" in balance_response:
+                logger.error(f"Error obteniendo balance: {balance_response}")
+                return 0.0
+            
+            if "usd" in balance_response:
+                usd_cents = balance_response.get("usd", "0")
+                return float(usd_cents) / 100.0
+            elif "balance" in balance_response:
+                usd_cents = balance_response.get("balance", {}).get("USD", "0")
+                return float(usd_cents) / 100.0
+            else:
+                return 0.0
                 
-                for i, future in enumerate(futures):
-                    logger.info(f"Completando evaluación {i+1}/{len(parameter_combinations)}")
-                    result = future.result()
-                    all_results.append(result)
+        except Exception as e:
+            logger.error(f"Error obteniendo balance real: {e}")
+            return 0.0
+
+    def _grid_search_real(self, strategy_name: str, parameter_ranges: List[ParameterRange], 
+                         target_metric: MetricType) -> OptimizationResult:
+        """Grid search usando trading REAL."""
+        logger.warning("🔥 EJECUTANDO GRID SEARCH CON DINERO REAL")
+        
+        # Generar todas las combinaciones de parámetros
+        parameter_combinations = self._generate_parameter_combinations(parameter_ranges)
+        
+        # Limitar combinaciones para trading real
+        max_combinations = min(len(parameter_combinations), self.config["max_evaluations"])
+        if len(parameter_combinations) > max_combinations:
+            logger.warning(f"⚠️ Limitando combinaciones de {len(parameter_combinations)} a {max_combinations} para trading real")
+            parameter_combinations = parameter_combinations[:max_combinations]
+        
+        results = []
+        trades_executed = 0
+        total_spent = 0.0
+        
+        for i, params in enumerate(parameter_combinations):
+            logger.info(f"🔄 Evaluando combinación {i+1}/{len(parameter_combinations)}: {params}")
+            
+            # Verificar límites de trading real
+            if trades_executed >= self.config["max_optimization_trades"]:
+                logger.warning("⚠️ Límite de trades alcanzado, deteniendo optimización")
+                break
+                
+            if total_spent >= self.config["max_optimization_amount_usd"]:
+                logger.warning("⚠️ Límite de gasto alcanzado, deteniendo optimización")
+                break
+            
+            try:
+                # Evaluar parámetros con trading real
+                score, evaluation_data = self._evaluate_parameters_real(strategy_name, params, target_metric)
+                
+                result_data = {
+                    "parameters": params.copy(),
+                    "score": score,
+                    "trades_executed": evaluation_data.get("trades_executed", 0),
+                    "money_spent": evaluation_data.get("money_spent", 0.0),
+                    "evaluation_time": evaluation_data.get("evaluation_time", 0),
+                    "metrics": evaluation_data.get("metrics", {})
+                }
+                
+                results.append(result_data)
+                trades_executed += evaluation_data.get("trades_executed", 0)
+                total_spent += evaluation_data.get("money_spent", 0.0)
+                
+                logger.info(f"✅ Score: {score:.4f}, Trades: {evaluation_data.get('trades_executed', 0)}, Gastado: ${evaluation_data.get('money_spent', 0.0):.2f}")
+                
+            except Exception as e:
+                logger.error(f"❌ Error evaluando parámetros {params}: {e}")
+                continue
         
         # Encontrar mejores parámetros
-        best_result = self._find_best_result(all_results, target_metric)
+        if not results:
+            raise ValueError("No se pudieron evaluar parámetros con trading real")
         
-        optimization_time = (datetime.now() - start_time).total_seconds()
-        
-        logger.info(f"Optimización completada en {optimization_time:.2f} segundos")
-        logger.info(f"Mejor {target_metric.value}: {best_result.roi_percentage:.2f}% ROI")
+        best_result = max(results, key=lambda x: x["score"])
         
         return OptimizationResult(
-            method=method,
-            target_metric=target_metric,
-            best_parameters=best_result.parameters,
-            best_score=self._get_metric_value(best_result, target_metric),
-            all_results=all_results,
-            parameter_ranges=parameter_ranges,
-            optimization_time_seconds=optimization_time,
-            total_combinations=len(parameter_combinations)
+            best_parameters=best_result["parameters"],
+            best_score=best_result["score"],
+            all_results=results,
+            optimization_time=0,  # Se calculará fuera
+            total_evaluations=len(results)
         )
-    
-    def validate_parameters(self,
-                           parameters: Dict[str, Any],
-                           validation_periods: int = 3,
-                           period_length_days: int = 30) -> Dict[str, Any]:
+
+    def _evaluate_parameters_real(self, strategy_name: str, parameters: Dict[str, Any], 
+                                 target_metric: MetricType) -> Tuple[float, Dict[str, Any]]:
         """
-        Validar parámetros usando validación cruzada temporal.
+        Evaluar parámetros ejecutando trades REALES.
         
-        Args:
-            parameters: Parámetros a validar
-            validation_periods: Número de períodos de validación
-            period_length_days: Duración de cada período en días
-            
-        Returns:
-            Dict con métricas de validación
+        ADVERTENCIA: Esto ejecuta trades REALES con dinero REAL.
         """
-        end_date = datetime.now(timezone.utc)
-        results = []
+        start_time = time.time()
         
-        for i in range(validation_periods):
-            period_end = end_date - timedelta(days=i * period_length_days)
-            period_start = period_end - timedelta(days=period_length_days)
+        logger.info(f"🔥 EVALUANDO PARÁMETROS CON TRADING REAL: {parameters}")
+        
+        # Crear RealTrader para esta evaluación
+        real_trader = RealTrader(self.dmarket_api, config=self.real_trader_config)
+        
+        # Configurar strategy engine con nuevos parámetros
+        original_config = self.strategy_engine.config.copy()
+        self.strategy_engine.config.update(parameters)
+        
+        initial_balance = real_trader.get_real_balance()["total_balance"]
+        
+        try:
+            # Ejecutar trades reales para evaluar
+            evaluation_data = self._execute_real_evaluation_trades(
+                strategy_name, real_trader, parameters
+            )
             
-            result = self.run_backtest(parameters, period_start, period_end)
-            results.append(result)
+            final_balance = real_trader.get_real_balance()["total_balance"]
+            money_spent = initial_balance - final_balance
+            
+            # Calcular métricas
+            metrics = self._calculate_real_metrics(evaluation_data, initial_balance, final_balance)
+            
+            # Obtener score según métrica objetivo
+            score = self._get_metric_score(metrics, target_metric)
+            
+            evaluation_time = time.time() - start_time
+            
+            result_data = {
+                "trades_executed": evaluation_data.get("trades_count", 0),
+                "money_spent": money_spent,
+                "evaluation_time": evaluation_time,
+                "metrics": metrics,
+                "initial_balance": initial_balance,
+                "final_balance": final_balance
+            }
+            
+            logger.info(f"✅ Evaluación completada: Score={score:.4f}, Trades={evaluation_data.get('trades_count', 0)}, Gastado=${money_spent:.2f}")
+            
+            return score, result_data
+            
+        finally:
+            # Restaurar configuración original
+            self.strategy_engine.config = original_config
+
+    def _execute_real_evaluation_trades(self, strategy_name: str, real_trader: RealTrader, 
+                                       parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ejecutar trades REALES para evaluar parámetros.
         
-        # Calcular estadísticas de validación
-        rois = [r.roi_percentage for r in results]
-        win_rates = [r.win_rate for r in results]
-        sharpe_ratios = [r.sharpe_ratio for r in results]
+        ESTO USA DINERO REAL - SER MUY CUIDADOSO.
+        """
+        logger.warning("💰 EJECUTANDO TRADES REALES PARA EVALUACIÓN")
+        
+        # Lista pequeña de ítems baratos para evaluación
+        evaluation_items = [
+            "P250 | Sand Dune (Battle-Scarred)",
+            "Nova | Walnut (Battle-Scarred)",
+            "MAC-10 | Candy Apple (Battle-Scarred)",
+            "Chroma Case",
+            "Chroma 2 Case"
+        ]
+        
+        trades_data = []
+        trades_executed = 0
+        max_evaluation_trades = 5  # Máximo 5 trades por evaluación
+        
+        logger.info(f"🎯 Buscando oportunidades en {len(evaluation_items)} ítems baratos...")
+        
+        try:
+            # Buscar oportunidades con los parámetros a evaluar
+            strategy_results = self.strategy_engine.run_strategies(evaluation_items)
+            
+            all_opportunities = []
+            for strategy, opportunities in strategy_results.items():
+                if opportunities:
+                    all_opportunities.extend(opportunities)
+            
+            # Filtrar por balance y límites
+            affordable_opportunities = []
+            current_balance = real_trader.get_real_balance()["cash_balance"]
+            
+            for opp in all_opportunities:
+                buy_price = opp.get("buy_price_usd", 0)
+                if (buy_price <= self.config["optimization_trade_size_usd"] and 
+                    buy_price <= current_balance * 0.1):  # Máximo 10% del balance por trade
+                    affordable_opportunities.append(opp)
+            
+            # Limitar a las mejores oportunidades
+            affordable_opportunities.sort(key=lambda x: x.get("expected_profit_usd", 0), reverse=True)
+            affordable_opportunities = affordable_opportunities[:max_evaluation_trades]
+            
+            logger.info(f"📊 Encontradas {len(affordable_opportunities)} oportunidades evaluables")
+            
+            # Ejecutar trades reales
+            for i, opportunity in enumerate(affordable_opportunities):
+                if trades_executed >= max_evaluation_trades:
+                    break
+                
+                try:
+                    logger.info(f"🔥 Ejecutando trade real {i+1}/{len(affordable_opportunities)}")
+                    
+                    # EJECUTAR COMPRA REAL
+                    trade_result = real_trader.execute_real_buy(opportunity)
+                    
+                    if trade_result.get("success", False):
+                        trades_executed += 1
+                        trades_data.append({
+                            "opportunity": opportunity,
+                            "result": trade_result,
+                            "success": True
+                        })
+                        logger.info(f"✅ Trade real exitoso #{trades_executed}")
+                    else:
+                        logger.warning(f"⚠️ Trade real falló: {trade_result.get('reason', 'Unknown')}")
+                        trades_data.append({
+                            "opportunity": opportunity,
+                            "result": trade_result,
+                            "success": False
+                        })
+                
+                except Exception as e:
+                    logger.error(f"❌ Error ejecutando trade real: {e}")
+                    continue
+            
+            return {
+                "trades_count": trades_executed,
+                "trades_data": trades_data,
+                "opportunities_found": len(all_opportunities),
+                "opportunities_affordable": len(affordable_opportunities)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error en evaluación de trades reales: {e}")
+            return {
+                "trades_count": 0,
+                "trades_data": [],
+                "error": str(e)
+            }
+
+    def _calculate_real_metrics(self, evaluation_data: Dict[str, Any], 
+                               initial_balance: float, final_balance: float) -> Dict[str, float]:
+        """Calcular métricas basadas en trades reales ejecutados."""
+        trades_data = evaluation_data.get("trades_data", [])
+        trades_count = evaluation_data.get("trades_count", 0)
+        
+        if trades_count == 0:
+            return {
+                "total_return": 0.0,
+                "win_rate": 0.0,
+                "sharpe_ratio": 0.0,
+                "profit_factor": 0.0,
+                "max_drawdown": 0.0,
+                "average_trade": 0.0,
+                "trades_per_day": 0.0
+            }
+        
+        # Calcular métricas básicas
+        total_return = final_balance - initial_balance
+        return_percentage = (total_return / initial_balance) * 100 if initial_balance > 0 else 0
+        
+        successful_trades = sum(1 for trade in trades_data if trade.get("success", False))
+        win_rate = (successful_trades / trades_count) * 100 if trades_count > 0 else 0
+        
+        # Métricas adicionales
+        avg_trade = total_return / trades_count if trades_count > 0 else 0
+        
+        # Para Sharpe ratio necesitaríamos múltiples observaciones, usar approximación simple
+        sharpe_ratio = return_percentage / 10.0 if return_percentage > 0 else 0  # Aproximación simple
         
         return {
-            "validation_periods": validation_periods,
-            "avg_roi": np.mean(rois),
-            "std_roi": np.std(rois),
-            "avg_win_rate": np.mean(win_rates),
-            "std_win_rate": np.std(win_rates),
-            "avg_sharpe": np.mean(sharpe_ratios),
-            "std_sharpe": np.std(sharpe_ratios),
-            "consistency_score": 1.0 - (np.std(rois) / (np.mean(rois) + 1e-6)),
-            "all_positive_roi": all(roi > 0 for roi in rois),
-            "detailed_results": results
+            "total_return": total_return,
+            "return_percentage": return_percentage,
+            "win_rate": win_rate,
+            "sharpe_ratio": sharpe_ratio,
+            "profit_factor": max(1.0, abs(total_return) + 1) if total_return > 0 else 0.1,
+            "max_drawdown": min(0, total_return),  # Simplificado
+            "average_trade": avg_trade,
+            "trades_per_day": trades_count,  # Para evaluación corta
+            "trades_executed": trades_count,
+            "successful_trades": successful_trades
         }
-    
-    def generate_optimization_report(self, 
-                                   optimization_result: OptimizationResult,
-                                   output_file: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Generar reporte detallado de optimización.
-        
-        Args:
-            optimization_result: Resultado de optimización
-            output_file: Archivo de salida opcional
-            
-        Returns:
-            Dict con reporte completo
-        """
-        best_result = min(optimization_result.all_results, 
-                         key=lambda x: -self._get_metric_value(x, optimization_result.target_metric))
-        
-        # Análisis de sensibilidad de parámetros
-        sensitivity_analysis = self._analyze_parameter_sensitivity(
-            optimization_result.all_results, optimization_result.parameter_ranges
-        )
-        
-        # Top resultados
-        top_results = sorted(
-            optimization_result.all_results,
-            key=lambda x: -self._get_metric_value(x, optimization_result.target_metric)
-        )[:10]
-        
-        report = {
-            "optimization_summary": {
-                "method": optimization_result.method.value,
-                "target_metric": optimization_result.target_metric.value,
-                "total_combinations": optimization_result.total_combinations,
-                "optimization_time_seconds": optimization_result.optimization_time_seconds,
-                "best_score": optimization_result.best_score
-            },
-            "best_parameters": optimization_result.best_parameters,
-            "best_result_details": {
-                "roi_percentage": best_result.roi_percentage,
-                "total_trades": best_result.total_trades,
-                "win_rate": best_result.win_rate,
-                "profit_factor": best_result.profit_factor,
-                "sharpe_ratio": best_result.sharpe_ratio,
-                "max_drawdown": best_result.max_drawdown
-            },
-            "parameter_sensitivity": sensitivity_analysis,
-            "top_10_results": [
-                {
-                    "parameters": result.parameters,
-                    "roi": result.roi_percentage,
-                    "win_rate": result.win_rate,
-                    "total_trades": result.total_trades
-                }
-                for result in top_results
-            ],
-            "performance_statistics": {
-                "avg_roi": np.mean([r.roi_percentage for r in optimization_result.all_results]),
-                "std_roi": np.std([r.roi_percentage for r in optimization_result.all_results]),
-                "avg_trades": np.mean([r.total_trades for r in optimization_result.all_results]),
-                "success_rate": len([r for r in optimization_result.all_results if r.roi_percentage > 0]) / len(optimization_result.all_results)
-            }
-        }
-        
-        if output_file:
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(report, f, indent=2, default=str, ensure_ascii=False)
-            logger.info(f"Reporte guardado en {output_file}")
-        
-        return report
-    
-    def _get_historical_data(self, 
-                           start_date: datetime, 
-                           end_date: datetime,
-                           items_filter: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Obtener datos históricos para backtesting."""
-        try:
-            with next(get_db()) as db:
-                # Query con join para obtener market_hash_name de SkinsMaestra
-                query = db.query(
-                    PreciosHistoricos,
-                    SkinsMaestra.market_hash_name
-                ).join(SkinsMaestra, PreciosHistoricos.skin_id == SkinsMaestra.id).filter(
-                    PreciosHistoricos.timestamp >= start_date,
-                    PreciosHistoricos.timestamp <= end_date
-                )
-                
-                if items_filter:
-                    query = query.filter(SkinsMaestra.market_hash_name.in_(items_filter))
-                
-                records = query.all()
-                
-                return [
-                    {
-                        'market_hash_name': record.market_hash_name,
-                        'price_usd': record.PreciosHistoricos.price,
-                        'volume': record.PreciosHistoricos.volume or 1,
-                        'date': record.PreciosHistoricos.timestamp,
-                        'source': record.PreciosHistoricos.fuente_api
-                    }
-                    for record in records
-                ]
-        except Exception as e:
-            logger.error(f"Error obteniendo datos históricos: {e}")
-            return []
-    
-    def _simulate_opportunities(self, 
-                              data_point: Dict[str, Any], 
-                              strategy_engine: StrategyEngine,
-                              config: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Simular oportunidades de trading basadas en datos históricos."""
-        opportunities = []
-        
-        try:
-            # Simular datos de ofertas basados en precio histórico
-            mock_sell_offers = [
-                {
-                    'price': {'USD': str(int(data_point['price_usd'] * 100))},
-                    'amount': 1
-                }
-            ]
-            
-            mock_buy_orders = [
-                {
-                    'price': {'USD': str(int(data_point['price_usd'] * 0.95 * 100))},
-                    'amount': 1
-                }
-            ]
-            
-            # Evaluar cada estrategia
-            if data_point['price_usd'] <= config.get('max_trade_amount_usd', 50.0):
-                # Basic flip opportunity
-                profit_margin = 0.05  # 5% margen mínimo
-                if data_point['price_usd'] * (1 + profit_margin) < data_point['price_usd'] * 1.1:
-                    opportunities.append({
-                        'strategy': 'basic_flip',
-                        'item_name': data_point['market_hash_name'],
-                        'buy_price': data_point['price_usd'],
-                        'estimated_sell_price': data_point['price_usd'] * 1.08,
-                        'expected_profit': data_point['price_usd'] * 0.03,
-                        'required_capital': data_point['price_usd'],
-                        'confidence': 0.8
-                    })
-                
-                # Snipe opportunity (si el precio está por debajo del promedio)
-                if data_point['price_usd'] < 20.0:  # Solo para ítems baratos
-                    opportunities.append({
-                        'strategy': 'snipe',
-                        'item_name': data_point['market_hash_name'],
-                        'buy_price': data_point['price_usd'],
-                        'estimated_sell_price': data_point['price_usd'] * 1.15,
-                        'expected_profit': data_point['price_usd'] * 0.10,
-                        'required_capital': data_point['price_usd'],
-                        'confidence': 0.7
-                    })
-        
-        except Exception as e:
-            logger.error(f"Error simulando oportunidades: {e}")
-        
-        return opportunities
-    
-    def _simulate_trade_execution(self, 
-                                opportunity: Dict[str, Any], 
-                                paper_trader: PaperTrader,
-                                data_point: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Simular ejecución de un trade."""
-        try:
-            # Simular compra
-            buy_success = paper_trader.execute_buy(
-                item_title=opportunity['item_name'],
-                price_usd=opportunity['buy_price'],
-                strategy=opportunity['strategy']
-            )
-            
-            if not buy_success:
-                return None
-            
-            # Simular venta después de un tiempo aleatorio (1-7 días)
-            import random
-            days_to_sell = random.randint(1, 7)
-            
-            # Simular fluctuación de precio
-            price_change = random.uniform(-0.1, 0.1)  # ±10%
-            actual_sell_price = opportunity['estimated_sell_price'] * (1 + price_change)
-            
-            sell_success = paper_trader.execute_sell(
-                item_title=opportunity['item_name'],
-                price_usd=actual_sell_price
-            )
-            
-            if sell_success:
-                profit = actual_sell_price - opportunity['buy_price']
-                return {
-                    'profit': profit,
-                    'buy_price': opportunity['buy_price'],
-                    'sell_price': actual_sell_price,
-                    'strategy': opportunity['strategy'],
-                    'days_held': days_to_sell
-                }
-        
-        except Exception as e:
-            logger.error(f"Error simulando ejecución de trade: {e}")
-        
-        return None
-    
-    def _generate_parameter_combinations(self, 
-                                       parameter_ranges: List[ParameterRange],
-                                       method: OptimizationMethod,
-                                       max_iterations: int) -> List[Dict[str, Any]]:
-        """Generar combinaciones de parámetros según el método especificado."""
-        if method == OptimizationMethod.GRID_SEARCH:
-            return self._grid_search_combinations(parameter_ranges, max_iterations)
-        elif method == OptimizationMethod.RANDOM_SEARCH:
-            return self._random_search_combinations(parameter_ranges, max_iterations)
+
+    def _get_metric_score(self, metrics: Dict[str, float], target_metric: MetricType) -> float:
+        """Obtener score según la métrica objetivo."""
+        if target_metric == MetricType.TOTAL_RETURN:
+            return metrics.get("total_return", 0.0)
+        elif target_metric == MetricType.WIN_RATE:
+            return metrics.get("win_rate", 0.0) / 100.0  # Normalizar a 0-1
+        elif target_metric == MetricType.SHARPE_RATIO:
+            return max(0, metrics.get("sharpe_ratio", 0.0))
+        elif target_metric == MetricType.PROFIT_FACTOR:
+            return metrics.get("profit_factor", 0.0)
+        elif target_metric == MetricType.AVERAGE_TRADE:
+            return metrics.get("average_trade", 0.0)
         else:
-            # Por simplicidad, usar random search para bayesiano
-            return self._random_search_combinations(parameter_ranges, max_iterations)
-    
-    def _grid_search_combinations(self, 
-                                parameter_ranges: List[ParameterRange],
-                                max_iterations: int) -> List[Dict[str, Any]]:
-        """Generar todas las combinaciones para grid search."""
-        parameter_values = [param_range.get_values() for param_range in parameter_ranges]
-        parameter_names = [param_range.name for param_range in parameter_ranges]
-        
-        combinations = list(itertools.product(*parameter_values))
-        
-        # Limitar a max_iterations si es necesario
-        if len(combinations) > max_iterations:
-            import random
-            combinations = random.sample(combinations, max_iterations)
-        
-        return [
-            dict(zip(parameter_names, combination))
-            for combination in combinations
-        ]
-    
-    def _random_search_combinations(self, 
-                                  parameter_ranges: List[ParameterRange],
-                                  max_iterations: int) -> List[Dict[str, Any]]:
-        """Generar combinaciones aleatorias para random search."""
-        import random
+            return metrics.get("total_return", 0.0)  # Default
+
+    def _generate_parameter_combinations(self, parameter_ranges: List[ParameterRange]) -> List[Dict[str, Any]]:
+        """Generar todas las combinaciones posibles de parámetros."""
         combinations = []
-        
-        for _ in range(max_iterations):
-            combination = {}
-            for param_range in parameter_ranges:
-                values = param_range.get_values()
-                combination[param_range.name] = random.choice(values)
-            combinations.append(combination)
-        
-        return combinations
-    
-    def _find_best_result(self, 
-                         results: List[BacktestResult], 
-                         target_metric: MetricType) -> BacktestResult:
-        """Encontrar el mejor resultado según la métrica objetivo."""
-        if not results:
-            raise ValueError("No hay resultados para evaluar")
-        
-        return max(results, key=lambda x: self._get_metric_value(x, target_metric))
-    
-    def _get_metric_value(self, result: BacktestResult, metric: MetricType) -> float:
-        """Obtener valor de métrica específica de un resultado."""
-        if metric == MetricType.ROI:
-            return result.roi_percentage
-        elif metric == MetricType.SHARPE_RATIO:
-            return result.sharpe_ratio
-        elif metric == MetricType.WIN_RATE:
-            return result.win_rate
-        elif metric == MetricType.PROFIT_FACTOR:
-            return result.profit_factor
-        elif metric == MetricType.MAX_DRAWDOWN:
-            return -result.max_drawdown  # Negativo porque queremos minimizar drawdown
-        elif metric == MetricType.TOTAL_PROFIT:
-            return result.total_profit_usd
-        else:
-            return result.roi_percentage
-    
-    def _calculate_backtest_metrics(self, 
-                                  paper_trader: PaperTrader,
-                                  strategy_stats: Dict[str, Dict[str, Any]],
-                                  parameters: Dict[str, Any],
-                                  start_date: datetime,
-                                  end_date: datetime,
-                                  execution_time: float) -> BacktestResult:
-        """Calcular métricas finales del backtest."""
-        # Obtener métricas del paper trader
-        performance = paper_trader.get_performance_metrics()
-        
-        total_trades = sum(stats['trades'] for stats in strategy_stats.values())
-        winning_trades = max(1, int(total_trades * performance.get('win_rate_percentage', 0) / 100))
-        
-        return BacktestResult(
-            parameters=parameters,
-            total_trades=total_trades,
-            winning_trades=winning_trades,
-            losing_trades=total_trades - winning_trades,
-            total_profit_usd=performance.get('total_profit_usd', 0.0),
-            total_fees_usd=performance.get('total_fees_usd', 0.0),
-            roi_percentage=performance.get('roi_percentage', 0.0),
-            win_rate=performance.get('win_rate_percentage', 0.0) / 100,
-            profit_factor=performance.get('profit_factor', 1.0),
-            sharpe_ratio=performance.get('sharpe_ratio', 0.0),
-            max_drawdown=performance.get('max_drawdown_percentage', 0.0) / 100,
-            avg_trade_duration_hours=24.0,  # Placeholder
-            best_trade_profit=performance.get('best_trade_profit', 0.0),
-            worst_trade_loss=performance.get('worst_trade_loss', 0.0),
-            strategy_breakdown=strategy_stats,
-            start_date=start_date,
-            end_date=end_date,
-            execution_time_seconds=execution_time
-        )
-    
-    def _create_empty_backtest_result(self, 
-                                    parameters: Dict[str, Any],
-                                    start_date: datetime,
-                                    end_date: datetime,
-                                    execution_time: float) -> BacktestResult:
-        """Crear resultado vacío cuando no hay datos."""
-        return BacktestResult(
-            parameters=parameters,
-            total_trades=0,
-            winning_trades=0,
-            losing_trades=0,
-            total_profit_usd=0.0,
-            total_fees_usd=0.0,
-            roi_percentage=0.0,
-            win_rate=0.0,
-            profit_factor=1.0,
-            sharpe_ratio=0.0,
-            max_drawdown=0.0,
-            avg_trade_duration_hours=0.0,
-            best_trade_profit=0.0,
-            worst_trade_loss=0.0,
-            strategy_breakdown={},
-            start_date=start_date,
-            end_date=end_date,
-            execution_time_seconds=execution_time
-        )
-    
-    def _analyze_parameter_sensitivity(self, 
-                                     results: List[BacktestResult],
-                                     parameter_ranges: List[ParameterRange]) -> Dict[str, Dict[str, float]]:
-        """Analizar sensibilidad de parámetros."""
-        sensitivity = {}
-        
         for param_range in parameter_ranges:
-            param_name = param_range.name
-            param_values = []
-            metric_values = []
-            
-            for result in results:
-                if param_name in result.parameters:
-                    param_values.append(result.parameters[param_name])
-                    metric_values.append(result.roi_percentage)
-            
-            if len(param_values) > 1:
-                correlation = np.corrcoef(param_values, metric_values)[0, 1]
-                sensitivity[param_name] = {
-                    "correlation": correlation if not np.isnan(correlation) else 0.0,
-                    "importance": abs(correlation) if not np.isnan(correlation) else 0.0,
-                    "optimal_value": param_values[np.argmax(metric_values)],
-                    "value_range": [min(param_values), max(param_values)]
-                }
-        
-        return sensitivity
+            values = param_range.get_values()
+            if values:
+                for value in values:
+                    combinations.append({param_range.name: value})
+        return combinations
 
 
 def create_default_optimization_config() -> List[ParameterRange]:
@@ -781,11 +524,11 @@ if __name__ == "__main__":
     parameter_ranges = create_default_optimization_config()
     
     # Ejecutar optimización
-    result = optimizer.optimize_parameters(
+    result = optimizer.optimize_strategy_parameters(
+        strategy_name="basic_flip",
         parameter_ranges=parameter_ranges,
-        target_metric=MetricType.ROI,
-        method=OptimizationMethod.RANDOM_SEARCH,
-        max_iterations=20
+        method=OptimizationMethod.GRID_SEARCH,
+        target_metric=MetricType.TOTAL_RETURN
     )
     
     # Generar reporte
@@ -797,4 +540,4 @@ if __name__ == "__main__":
     print(f"Mejores parámetros encontrados:")
     for param, value in result.best_parameters.items():
         print(f"  {param}: {value}")
-    print(f"ROI obtenido: {result.best_score:.2f}%") 
+    print(f"TOTAL RETURN obtenido: {result.best_score:.2f}%") 

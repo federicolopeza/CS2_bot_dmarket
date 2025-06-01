@@ -8,7 +8,7 @@
 Thumbs.db
 Desktop.ini
 
-# Directorios de Python
+# Directorios de Python (en cualquier ubicación)
 __pycache__/
 *.pyc
 *.pyo
@@ -20,6 +20,8 @@ wheels/
 *.egg
 *.manifest
 *.spec
+*/__pycache__/
+*/*.pyc
 
 # Entornos virtuales de Python
 .venv/
@@ -70,6 +72,16 @@ coverage.xml
 ~$*.doc*
 ~$*.xls*
 ~$*.ppt*
+
+# Archivos temporales y de respaldo
+*.tmp
+*.bak
+*.backup
+*~
+
+# Archivos del sistema de trading
+temp_*
+backup_*
 
 # Otros
 .python-version

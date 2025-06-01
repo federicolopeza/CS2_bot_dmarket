@@ -11,6 +11,9 @@ import os
 import sys
 from dotenv import load_dotenv
 
+# Agregar el directorio padre al path para encontrar los módulos
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Configurar path
 project_root = os.path.abspath(os.path.dirname(__file__))
 if project_root not in sys.path:
@@ -39,8 +42,8 @@ def main():
         
         # Inicializar componentes
         dmarket_api = DMarketAPI(
-            public_key=os.getenv("DMARKET_PUBLIC_KEY", "demo_key"),
-            secret_key=os.getenv("DMARKET_SECRET_KEY", "demo_secret")
+            public_key=os.getenv("DMARKET_PUBLIC_KEY"),
+            secret_key=os.getenv("DMARKET_SECRET_KEY")
         )
         
         print("🧠 2. Inicializando Motor de Análisis...")
