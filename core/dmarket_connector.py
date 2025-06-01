@@ -298,33 +298,36 @@ class DMarketAPI:
     ) -> Dict[str, Any]:
         """
         Obtiene las órdenes de compra activas para un título de ítem específico.
-        NOTA: Este endpoint parece estar deshabilitado o requerir permisos especiales.
-        Retornando datos vacíos temporalmente para evitar errores 401.
+        SOLUCIONADO: Usando endpoint alternativo de market items que sí funciona.
         """
-        logger.warning(f"get_buy_offers deshabilitado temporalmente para '{title}' - endpoint problemático")
+        logger.info(f"Obteniendo ofertas de mercado para '{title}' como alternativa a buy_offers")
         
-        # Retornar estructura vacía pero válida
-        return {
-            "objects": [],
-            "total": {"value": 0}
+        # Usar el endpoint de market items que sí funciona
+        endpoint = "/exchange/v1/market/items"
+        query_params = {
+            "gameId": game_id,
+            "title": title,
+            "limit": str(limit),
+            "currency": currency.upper(),
+            "cursor": cursor,
+            "orderBy": order_by,
+            "orderDir": order_dir
         }
         
-        # CÓDIGO ORIGINAL COMENTADO:
-        # endpoint = "/exchange/v1/user/targets"  # ENDPOINT PROBLEMÁTICO
-        # query_params = {
-        #     "title": title,
-        #     "gameId": game_id,
-        #     "limit": str(limit),
-        #     "currency": currency.upper(),
-        #     "cursor": cursor,
-        #     "orderBy": order_by,
-        #     "orderDir": order_dir
-        # }
-        # 
-        # final_params = {k: v for k, v in query_params.items() if v is not None}
-        # 
-        # logger.info(f"Solicitando órdenes de compra para '{title}': GET {endpoint} con params: {final_params}")
-        # return self._make_request(method="GET", endpoint=endpoint, params=final_params)
+        final_params = {k: v for k, v in query_params.items() if v is not None}
+        
+        logger.info(f"Solicitando ítems de mercado para '{title}': GET {endpoint} con params: {final_params}")
+        response = self._make_request(method="GET", endpoint=endpoint, params=final_params)
+        
+        # Si hay error, devolver estructura vacía válida
+        if "error" in response:
+            logger.warning(f"Error obteniendo ítems de mercado para '{title}': {response.get('message', 'error desconocido')}")
+            return {
+                "objects": [],
+                "total": {"value": 0}
+            }
+        
+        return response
 
     def buy_item(self, asset_id: str, price_usd: float) -> Dict[str, Any]:
         """

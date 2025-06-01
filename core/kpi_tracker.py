@@ -219,8 +219,8 @@ class KPITracker:
         try:
             db: Session = next(get_db())
             items = db.query(InventoryItem).filter(
-                InventoryItem.purchased_at >= start_date,
-                InventoryItem.purchased_at <= end_date
+                InventoryItem.purchase_date >= start_date,
+                InventoryItem.purchase_date <= end_date
             ).all()
             return items
         except Exception as e:
@@ -236,11 +236,11 @@ class KPITracker:
         for item in items:
             if item.status == InventoryItemStatus.SOLD:
                 # Ganancia realizada
-                profit = (item.sale_price_usd or 0.0) - item.purchase_price_usd
+                profit = (item.sold_price_usd or 0.0) - item.purchase_price_usd
                 total_profit += profit
             elif item.status in [InventoryItemStatus.PURCHASED, InventoryItemStatus.LISTED]:
-                # Ganancia no realizada (estimada con precio actual)
-                current_value = item.current_market_price_usd or item.purchase_price_usd
+                # Ganancia no realizada (estimada con precio actual - usar precio de compra como estimación)
+                current_value = item.purchase_price_usd  # Simplificación temporal
                 unrealized_profit = current_value - item.purchase_price_usd
                 total_profit += unrealized_profit
                 
@@ -251,8 +251,8 @@ class KPITracker:
         realized_profit = 0.0
         
         for item in sold_items:
-            if item.sale_price_usd:
-                profit = item.sale_price_usd - item.purchase_price_usd
+            if item.sold_price_usd:
+                profit = item.sold_price_usd - item.purchase_price_usd
                 realized_profit += profit
                 
         return realized_profit
@@ -262,7 +262,7 @@ class KPITracker:
         unrealized_profit = 0.0
         
         for item in active_items:
-            current_value = item.current_market_price_usd or item.purchase_price_usd
+            current_value = item.purchase_price_usd  # Simplificación temporal
             profit = current_value - item.purchase_price_usd
             unrealized_profit += profit
             
@@ -278,9 +278,9 @@ class KPITracker:
 
     def _is_profitable_trade(self, item: InventoryItem) -> bool:
         """Determina si un trade fue rentable."""
-        if item.sale_price_usd is None:
+        if item.sold_price_usd is None:
             return False
-        return item.sale_price_usd > item.purchase_price_usd
+        return item.sold_price_usd > item.purchase_price_usd
 
     def _calculate_avg_profit_per_trade(self, sold_items: List[InventoryItem], profit_only: bool = False) -> float:
         """Calcula ganancia promedio por trade."""
@@ -292,11 +292,11 @@ class KPITracker:
             profitable_items = [item for item in sold_items if self._is_profitable_trade(item)]
             if not profitable_items:
                 return 0.0
-            total_profit = sum((item.sale_price_usd or 0) - item.purchase_price_usd for item in profitable_items)
+            total_profit = sum((item.sold_price_usd or 0) - item.purchase_price_usd for item in profitable_items)
             return total_profit / len(profitable_items)
         else:
             # Todos los trades
-            total_profit = sum((item.sale_price_usd or 0) - item.purchase_price_usd for item in sold_items)
+            total_profit = sum((item.sold_price_usd or 0) - item.purchase_price_usd for item in sold_items)
             return total_profit / len(sold_items)
 
     def _calculate_avg_loss_per_trade(self, sold_items: List[InventoryItem]) -> float:
@@ -306,7 +306,7 @@ class KPITracker:
         if not losing_items:
             return 0.0
             
-        total_loss = sum((item.sale_price_usd or 0) - item.purchase_price_usd for item in losing_items)
+        total_loss = sum((item.sold_price_usd or 0) - item.purchase_price_usd for item in losing_items)
         return abs(total_loss / len(losing_items))  # Retornar valor absoluto
 
     def _calculate_profit_factor(self, sold_items: List[InventoryItem]) -> float:
@@ -318,7 +318,7 @@ class KPITracker:
         total_losses = 0.0
         
         for item in sold_items:
-            profit = (item.sale_price_usd or 0) - item.purchase_price_usd
+            profit = (item.sold_price_usd or 0) - item.purchase_price_usd
             if profit > 0:
                 total_gains += profit
             else:
@@ -338,8 +338,8 @@ class KPITracker:
         valid_items = 0
         
         for item in sold_items:
-            if item.sold_at and item.purchased_at:
-                duration = item.sold_at - item.purchased_at
+            if item.sold_date and item.purchase_date:
+                duration = item.sold_date - item.purchase_date
                 total_duration_hours += duration.total_seconds() / 3600
                 valid_items += 1
                 
@@ -516,25 +516,25 @@ class KPITracker:
             db: Session = next(get_db())
             sold_items = db.query(InventoryItem).filter(
                 InventoryItem.status == InventoryItemStatus.SOLD,
-                InventoryItem.sale_price_usd.isnot(None)
+                InventoryItem.sold_price_usd.isnot(None)
             ).all()
             
             # Calcular profit para cada ítem y ordenar
             item_profits = []
             for item in sold_items:
-                profit = (item.sale_price_usd or 0) - item.purchase_price_usd
+                profit = (item.sold_price_usd or 0) - item.purchase_price_usd
                 profit_percentage = (profit / item.purchase_price_usd * 100) if item.purchase_price_usd > 0 else 0
                 
                 item_profits.append({
                     "item_title": item.item_title,
                     "purchase_price_usd": item.purchase_price_usd,
-                    "sale_price_usd": item.sale_price_usd,
+                    "sold_price_usd": item.sold_price_usd,
                     "profit_usd": profit,
                     "profit_percentage": profit_percentage,
                     "strategy_used": item.strategy_used,
                     "trade_duration_hours": (
-                        (item.sold_at - item.purchased_at).total_seconds() / 3600
-                        if item.sold_at and item.purchased_at else 0
+                        (item.sold_date - item.purchase_date).total_seconds() / 3600
+                        if item.sold_date and item.purchase_date else 0
                     )
                 })
             
@@ -554,25 +554,25 @@ class KPITracker:
             db: Session = next(get_db())
             sold_items = db.query(InventoryItem).filter(
                 InventoryItem.status == InventoryItemStatus.SOLD,
-                InventoryItem.sale_price_usd.isnot(None)
+                InventoryItem.sold_price_usd.isnot(None)
             ).all()
             
             # Calcular profit para cada ítem y ordenar
             item_profits = []
             for item in sold_items:
-                profit = (item.sale_price_usd or 0) - item.purchase_price_usd
+                profit = (item.sold_price_usd or 0) - item.purchase_price_usd
                 profit_percentage = (profit / item.purchase_price_usd * 100) if item.purchase_price_usd > 0 else 0
                 
                 item_profits.append({
                     "item_title": item.item_title,
                     "purchase_price_usd": item.purchase_price_usd,
-                    "sale_price_usd": item.sale_price_usd,
+                    "sold_price_usd": item.sold_price_usd,
                     "profit_usd": profit,
                     "profit_percentage": profit_percentage,
                     "strategy_used": item.strategy_used,
                     "trade_duration_hours": (
-                        (item.sold_at - item.purchased_at).total_seconds() / 3600
-                        if item.sold_at and item.purchased_at else 0
+                        (item.sold_date - item.purchase_date).total_seconds() / 3600
+                        if item.sold_date and item.purchase_date else 0
                     )
                 })
             

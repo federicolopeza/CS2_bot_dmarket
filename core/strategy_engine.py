@@ -1,8 +1,9 @@
 # core/strategy_engine.py
 import logging
 import time
+import json
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -38,120 +39,146 @@ class StrategyEngine:
             self.config.update(config) # Actualizar los defaults con la configuración proporcionada
             
         self.dmarket_fee_info: Optional[Dict[str, Any]] = None # Para cachear las tasas
+        self._fee_cache = {} # Cache para almacenar información de comisiones
 
         logger.info(f"StrategyEngine inicializado con configuración: {self.config}")
 
     def _get_default_config(self) -> Dict[str, Any]:
         """Retorna una configuración por defecto si no se provee una."""
         return {
-            "min_profit_usd_basic_flip": 0.50, # Mínimo beneficio en USD para un flip básico
-            "min_profit_percentage_basic_flip": 0.05, # Mínimo % de beneficio para un flip básico (5%)
+            "min_profit_usd_basic_flip": 0.01, # Mínimo beneficio en USD para un flip básico (1 centavo)
+            "min_profit_percentage_basic_flip": 0.01, # Mínimo % de beneficio para un flip básico (1%)
             "max_items_to_scan_per_run": 100, # Límite de ítems a escanear en una ejecución
-            "min_price_usd_for_sniping": 1.00, # Precio mínimo de un ítem para considerarlo para sniping
-            "snipe_discount_percentage": 0.15, # % de descuento sobre PME para considerar un snipe (15%)
+            "min_price_usd_for_sniping": 0.25, # Precio mínimo de un ítem para considerarlo para sniping
+            "snipe_discount_percentage": 0.10, # % de descuento sobre PME para considerar un snipe (10%)
             "game_id": DEFAULT_GAME_ID,
             "delay_between_items_sec": 1.0, # Nueva config para delay
             
             # Configuración para Estrategia 2: Flip por Atributos Premium
-            "min_profit_usd_attribute_flip": 1.00, # Mínimo beneficio en USD para flip por atributos
-            "min_profit_percentage_attribute_flip": 0.10, # Mínimo % de beneficio (10%)
-            "min_rarity_score_for_premium": 50.0, # Puntuación mínima de rareza para considerar premium
-            "min_premium_multiplier": 1.5, # Multiplicador mínimo para considerar premium
-            "max_price_usd_attribute_flip": 500.00, # Precio máximo para flip por atributos
+            "min_profit_usd_attribute_flip": 0.05, # Mínimo beneficio en USD para flip por atributos (5 centavos)
+            "min_profit_percentage_attribute_flip": 0.05, # Mínimo % de beneficio (5%)
+            "min_rarity_score_for_premium": 30.0, # Puntuación mínima de rareza para considerar premium
+            "min_premium_multiplier": 1.2, # Multiplicador mínimo para considerar premium
+            "max_price_usd_attribute_flip": 100.00, # Precio máximo para flip por atributos
             
             # Configuración para Estrategia 5: Arbitraje por Bloqueo de Intercambio
-            "min_profit_usd_trade_lock": 2.00, # Mínimo beneficio en USD para trade lock
-            "min_profit_percentage_trade_lock": 0.20, # Mínimo % de beneficio (20%)
-            "trade_lock_discount_threshold": 0.30, # Descuento mínimo para considerar trade lock (30%)
-            "max_trade_lock_days": 7, # Máximo días de bloqueo a considerar
+            "min_profit_usd_trade_lock": 0.10, # Mínimo beneficio en USD para trade lock
+            "min_profit_percentage_trade_lock": 0.10, # Mínimo % de beneficio (10%)
+            "trade_lock_discount_threshold": 0.15, # Descuento mínimo para considerar trade lock (15%)
+            "max_trade_lock_days": 14, # Máximo días de bloqueo a considerar
             
             # Configuración para Estrategia 4: Volatilidad
-            "min_profit_usd_volatility": 1.50, # Mínimo beneficio en USD para volatilidad
-            "min_confidence_volatility": 0.7, # Confianza mínima para señales de volatilidad
+            "min_profit_usd_volatility": 0.05, # Mínimo beneficio en USD para volatilidad
+            "min_confidence_volatility": 0.5, # Confianza mínima para señales de volatilidad
             "max_price_usd_volatility": 1000.00, # Precio máximo para análisis de volatilidad
         }
 
     def _fetch_and_cache_fee_info(self, game_id: str) -> bool:
         """
-        Obtiene y cachea la información de tasas de comisión de DMarket para un juego específico.
-        Robusto ante errores de API.
+        Obtiene y cachea la información de comisiones de DMarket.
+        Intenta usar /exchange/v1/customized-fees.
+        Retorna True si la información se obtuvo y procesó correctamente, False en caso contrario.
         """
-        if self.dmarket_fee_info and self.dmarket_fee_info.get("gameId") == game_id:
-            logger.debug(f"Usando tasas de comisión cacheadas para el juego {game_id}.")
+        # Priorizar info de caché si es reciente y para el mismo juego
+        cache_entry = self._fee_cache.get(game_id)
+        if cache_entry and (datetime.now(timezone.utc) - cache_entry['timestamp']).total_seconds() < self.config.get("FEE_CACHE_DURATION_SECONDS", 3600):
+            logger.debug(f"Usando información de comisiones cacheada para {game_id}.")
             return True
-        
-        logger.info(f"Obteniendo tasas de comisión de DMarket para el juego {game_id}...")
-        response = self.connector.get_fee_rates(game_id=game_id)
 
-        if response and "error" not in response and "rates" in response:
-            self.dmarket_fee_info = response
-            logger.info(f"Tasas de comisión obtenidas y cacheadas para {game_id}: {self.dmarket_fee_info}")
-            return True
-        else:
-            logger.warning(f"No se pudieron obtener las tasas de comisión para {game_id}. Usando valores por defecto.")
-            logger.debug(f"Respuesta de fee-rates: {response}")
-            
-            # Usar configuración por defecto para fees si la API falla
-            self.dmarket_fee_info = {
-                "gameId": game_id,
-                "rates": [
-                    {
-                        "type": "exchange",
-                        "amount": "0.075"  # 7.5% por defecto
-                    }
-                ],
-                "minCommission": {
-                    "currency": "USD",
-                    "amount": "0.01"  # $0.01 mínimo
+        logger.info(f"Solicitando información de comisiones (customized-fees) para el juego {game_id}...")
+        
+        endpoint = "/exchange/v1/customized-fees"
+        query_params = {"gameId": game_id}
+        try:
+            response = self.connector._make_request(method="GET", endpoint=endpoint, params=query_params)
+
+            if "error" in response or not response: # Asumiendo que una respuesta vacía también es un problema
+                logger.error(f"Error al obtener customized-fees: {response.get('message', 'Respuesta vacía o error no especificado')}")
+                # Guardar un intento fallido en caché para evitar reintentos rápidos
+                self._fee_cache[game_id] = { 
+                    'data': self.config.get("DEFAULT_FEE_INFO", {}), # Usar default si falla
+                    'timestamp': datetime.now(timezone.utc)
                 }
+                return False
+
+            # Imprimir directamente la respuesta para depuración
+            print("DEBUG: Respuesta CRUDA de /exchange/v1/customized-fees:")
+            print(response)
+            # logger.info(f"Respuesta de customized-fees: {json.dumps(response, indent=2)}") # Comentado temporalmente
+
+            processed_fee_data = None
+            if isinstance(response, dict) and "defaultFee" in response:
+                default_fee_info = response["defaultFee"]
+                if "fraction" in default_fee_info and "minAmount" in default_fee_info:
+                    try:
+                        fee_rate_str = str(default_fee_info["fraction"])
+                        min_commission_cents_str = str(default_fee_info["minAmount"])
+                        
+                        # Validar que los valores se puedan convertir
+                        float(fee_rate_str) # Intenta convertir a float para validar
+                        int(min_commission_cents_str) # Intenta convertir a int para validar
+
+                        processed_fee_data = {
+                            "feeRate": {"amount": fee_rate_str}, # Guardar como string, DMarketAPI espera strings
+                            "minCommission": {"amount": min_commission_cents_str} # Guardar como string
+                        }
+                        logger.info(f"Comisiones por defecto extraídas de API: Tasa={fee_rate_str}, Mínima(centavos)={min_commission_cents_str}")
+                    except ValueError as ve:
+                        logger.error(f"Error al convertir valores de comisiones desde la API: {ve}. Respuesta: {default_fee_info}")
+                        processed_fee_data = None # Forzar uso de defaults globales si hay error de conversión
+            
+            if not processed_fee_data:
+                logger.warning("No se pudo extraer 'defaultFee' o sus componentes de la respuesta de customized-fees. Usando defaults globales del config.")
+                processed_fee_data = self.config.get("DEFAULT_FEE_INFO", {
+                    "feeRate": {"amount": "0.05"}, 
+                    "minCommission": {"amount": "1"} # API defaultFee.minAmount está en centavos, default aquí también
+                })
+
+
+            self._fee_cache[game_id] = {
+                'data': processed_fee_data,
+                'timestamp': datetime.now(timezone.utc)
             }
-            logger.info(f"Usando tasas de comisión por defecto: {self.dmarket_fee_info}")
-            return True  # Devolver True porque tenemos valores por defecto
+            logger.info(f"Información de comisiones (customized-fees) para {game_id} cacheada: {processed_fee_data}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Excepción al obtener/procesar customized-fees para {game_id}: {e}", exc_info=True)
+            self._fee_cache[game_id] = {
+                'data': self.config.get("DEFAULT_FEE_INFO", {}), 
+                'timestamp': datetime.now(timezone.utc)
+            }
+            return False
 
     def _calculate_dmarket_sale_fee_cents(self, item_price_cents: int) -> int:
-        """
-        Calcula la comisión de venta de DMarket en centavos para un precio dado en centavos.
-        Utiliza la información de `self.dmarket_fee_info`.
-        Se debe llamar a `_fetch_and_cache_fee_info` antes.
-
-        Args:
-            item_price_cents (int): Precio del ítem en centavos.
-
-        Returns:
-            int: La comisión de venta calculada en centavos.
-                 Retorna 0 si no se pueden calcular las tasas.
-        """
-        if not self.dmarket_fee_info or "rates" not in self.dmarket_fee_info:
+        """Calcula la comisión de venta de DMarket en centavos."""
+        fee_info_entry = self._fee_cache.get(self.config.get("DEFAULT_GAME_ID", "a8db"))
+        if not fee_info_entry or not fee_info_entry.get('data'):
             logger.warning("No hay información de tasas de DMarket disponible para calcular comisión. Se asume 0.")
             return 0
 
-        # Asumimos que la primera tasa en 'rates' es la relevante (exchange/sale fee)
-        # Esto podría necesitar ser más robusto si hay múltiples tipos de tasas.
+        fee_data = fee_info_entry['data']
+        
+        fee_rate_str = fee_data.get("feeRate", {}).get("amount")
+        # minCommission.amount ahora se espera que sea un string representando CENTAVOS
+        min_comm_cents_str = fee_data.get("minCommission", {}).get("amount")
+
+        if fee_rate_str is None or min_comm_cents_str is None:
+            logger.error(f"Formato de comisiones inesperado: {fee_data}. Se asume comisión 0.")
+            return 0
+
         try:
-            sale_fee_rate_info = next(filter(lambda r: r.get('type') == 'exchange', self.dmarket_fee_info['rates']), None)
-            if not sale_fee_rate_info or 'amount' not in sale_fee_rate_info:
-                 sale_fee_rate_info = self.dmarket_fee_info['rates'][0] # Fallback a la primera si no hay 'exchange'
+            fee_rate = float(fee_rate_str) # Ej: 0.1 para 10%
+            min_commission_cents = int(min_comm_cents_str) # Ej: 1 para 1 centavo
 
-            fee_percentage_str = sale_fee_rate_info.get('amount')
-            if not fee_percentage_str:
-                logger.error("Formato de tasa de comisión inesperado, no se encontró 'amount'.")
-                return 0
+            calculated_fee_cents = int(item_price_cents * fee_rate)
+            final_fee_cents = max(calculated_fee_cents, min_commission_cents)
             
-            fee_percentage = float(fee_percentage_str) # Ej: "0.030" para 3%
-            
-            calculated_fee_cents = int(item_price_cents * fee_percentage)
-
-            min_commission_info = self.dmarket_fee_info.get('minCommission')
-            if min_commission_info and min_commission_info.get('currency') == 'USD':
-                min_commission_cents = int(float(min_commission_info.get('amount', "0")) * 100)
-                if calculated_fee_cents < min_commission_cents:
-                    logger.debug(f"Comisión calculada ({calculated_fee_cents/100} USD) es menor que la mínima ({min_commission_cents/100} USD). Usando comisión mínima.")
-                    return min_commission_cents
-            
-            return calculated_fee_cents
-        except (IndexError, ValueError, TypeError, KeyError) as e:
-            logger.error(f"Error al parsear o calcular la comisión de DMarket: {e}. Info de tasas: {self.dmarket_fee_info}")
-            return 0 # O manejar el error de otra forma
+            # logger.debug(f"Cálculo comisión: Precio={item_price_cents}c, Tasa={fee_rate*100}%, MinCom={min_commission_cents}c => Calculada={calculated_fee_cents}c, Final={final_fee_cents}c")
+            return final_fee_cents
+        except ValueError as e:
+            logger.error(f"Error al convertir valores de comisión para cálculo: {e}. Tasa str: '{fee_rate_str}', MinCom str: '{min_comm_cents_str}'. Se asume comisión 0.")
+            return 0
 
     def _find_basic_flips(self, item_title: str, current_sell_offers: List[Dict[str, Any]], current_buy_orders: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -164,6 +191,10 @@ class StrategyEngine:
         if not current_sell_offers or not current_buy_orders:
             logger.debug(f"No hay suficientes datos de ofertas/órdenes para buscar flips básicos en {item_title}.")
             return opportunities
+
+        #DEBUG: Imprimir la primera current_sell_offer para ver su estructura
+        if current_sell_offers:
+            logger.info(f"DEBUG StrategyEngine: Primera current_sell_offer para {item_title}: {current_sell_offers[0]}")
 
         # 1. Extraer LSO (Lowest Sell Offer) en centavos
         lowest_sell_price_cents: Optional[int] = None
@@ -243,13 +274,14 @@ class StrategyEngine:
         logger.info(f"Flip Potencial para {item_title}: Comprar a {cost_usd:.2f} USD, Vender a {highest_buy_price_cents/100.0:.2f} USD, Comisión: {commission_cents/100.0:.2f} USD, Profit: {potential_profit_usd:.2f} USD ({profit_percentage*100:.2f}%)")
 
         # 4. Verificar umbrales de beneficio
-        min_profit_usd = self.config.get("min_profit_usd_basic_flip", 0.50)
-        min_profit_percentage = self.config.get("min_profit_percentage_basic_flip", 0.05)
+        min_profit_usd = self.config.get("min_profit_usd_basic_flip", 0.01)
+        min_profit_percentage = self.config.get("min_profit_percentage_basic_flip", 0.01)
 
         if potential_profit_usd >= min_profit_usd and profit_percentage >= min_profit_percentage:
             opportunity = {
                 "strategy": "basic_flip",
                 "item_title": item_title,
+                "asset_id": lso_offer_details.get('assetId') if lso_offer_details else None,
                 "buy_price_usd": cost_usd,
                 "sell_price_usd": highest_buy_price_cents / 100.0,
                 "profit_usd": potential_profit_usd,
@@ -298,8 +330,8 @@ class StrategyEngine:
                 # Por ahora, el cálculo del profit se omitirá si las tasas no están.
                 pass # Continuar para identificar el snipe, el profit será None o 0
 
-        min_price_for_sniping_usd = self.config.get("min_price_usd_for_sniping", 1.00)
-        snipe_discount_percentage_threshold = self.config.get("snipe_discount_percentage", 0.15)
+        min_price_for_sniping_usd = self.config.get("min_price_usd_for_sniping", 0.25)
+        snipe_discount_percentage_threshold = self.config.get("snipe_discount_percentage", 0.10)
 
         for offer in current_sell_offers:
             try:
@@ -335,10 +367,11 @@ class StrategyEngine:
                         opportunity = {
                             "strategy": "snipe",
                             "item_title": item_title,
+                            "asset_id": offer.get('assetId'),
                             "pme_usd": estimated_market_price_usd,
                             "offer_price_usd": offer_price_usd,
                             "discount_percentage": discount_percentage,
-                            "potential_profit_usd": profit_usd,
+                            "profit_usd": profit_usd,
                             "offer_details": offer, # assetId, attributes, etc.
                             "commission_on_pme_usd": commission_cents / 100.0,
                             "timestamp": time.time()
@@ -385,7 +418,7 @@ class StrategyEngine:
                 offer_price_usd = offer_price_cents / 100.0
                 
                 # Verificar límites de precio
-                max_price = self.config.get("max_price_usd_attribute_flip", 500.0)
+                max_price = self.config.get("max_price_usd_attribute_flip", 100.0)
                 if offer_price_usd > max_price:
                     continue
                 
@@ -402,8 +435,8 @@ class StrategyEngine:
                 )
                 
                 # Verificar si cumple criterios de premium
-                min_rarity_score = self.config.get("min_rarity_score_for_premium", 50.0)
-                min_premium_multiplier = self.config.get("min_premium_multiplier", 1.5)
+                min_rarity_score = self.config.get("min_rarity_score_for_premium", 30.0)
+                min_premium_multiplier = self.config.get("min_premium_multiplier", 1.2)
                 
                 if (evaluation.overall_rarity_score < min_rarity_score or 
                     evaluation.premium_multiplier < min_premium_multiplier):
@@ -423,8 +456,8 @@ class StrategyEngine:
                 profit_percentage = potential_profit_usd / offer_price_usd if offer_price_usd > 0 else 0
                 
                 # Verificar umbrales de beneficio
-                min_profit_usd = self.config.get("min_profit_usd_attribute_flip", 1.00)
-                min_profit_percentage = self.config.get("min_profit_percentage_attribute_flip", 0.10)
+                min_profit_usd = self.config.get("min_profit_usd_attribute_flip", 0.05)
+                min_profit_percentage = self.config.get("min_profit_percentage_attribute_flip", 0.05)
                 
                 if (potential_profit_usd >= min_profit_usd and 
                     profit_percentage >= min_profit_percentage):
@@ -505,13 +538,13 @@ class StrategyEngine:
                 
                 # Verificar duración del trade lock
                 lock_days = trade_lock_info.get('days_remaining', 0)
-                max_lock_days = self.config.get("max_trade_lock_days", 7)
+                max_lock_days = self.config.get("max_trade_lock_days", 14)
                 if lock_days > max_lock_days:
                     continue
                 
                 # Calcular descuento
                 discount_percentage = (reference_price - offer_price_usd) / reference_price if reference_price > 0 else 0
-                min_discount = self.config.get("trade_lock_discount_threshold", 0.30)
+                min_discount = self.config.get("trade_lock_discount_threshold", 0.15)
                 
                 if discount_percentage < min_discount:
                     continue
@@ -523,8 +556,8 @@ class StrategyEngine:
                 profit_percentage = potential_profit_usd / offer_price_usd if offer_price_usd > 0 else 0
                 
                 # Verificar umbrales de beneficio
-                min_profit_usd = self.config.get("min_profit_usd_trade_lock", 2.00)
-                min_profit_percentage = self.config.get("min_profit_percentage_trade_lock", 0.20)
+                min_profit_usd = self.config.get("min_profit_usd_trade_lock", 0.10)
+                min_profit_percentage = self.config.get("min_profit_percentage_trade_lock", 0.10)
                 
                 if (potential_profit_usd >= min_profit_usd and 
                     profit_percentage >= min_profit_percentage):
@@ -709,8 +742,8 @@ class StrategyEngine:
                 currency="USD"
             )
             
-            if response_buy_orders and "error" not in response_buy_orders and "offers" in response_buy_orders:
-                item_data['current_buy_orders'] = response_buy_orders.get('offers', [])
+            if response_buy_orders and "error" not in response_buy_orders and "objects" in response_buy_orders:
+                item_data['current_buy_orders'] = response_buy_orders.get('objects', [])
                 logger.debug(f"Encontradas {len(item_data['current_buy_orders'])} órdenes de compra para {item_title}.")
             else:
                 logger.warning(f"No se pudieron obtener órdenes de compra para {item_title}: {response_buy_orders.get('error') if response_buy_orders else 'Respuesta vacía'}")
@@ -799,8 +832,8 @@ class StrategyEngine:
             )
             
             # Convertir señales a oportunidades
-            min_confidence = self.config.get("min_confidence_volatility", 0.7)
-            min_profit_usd = self.config.get("min_profit_usd_volatility", 1.50)
+            min_confidence = self.config.get("min_confidence_volatility", 0.5)
+            min_profit_usd = self.config.get("min_profit_usd_volatility", 0.05)
             
             for signal in volatility_signals:
                 if signal.confidence < min_confidence:

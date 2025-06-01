@@ -1,91 +1,49 @@
-# Archivos de entorno
+# Archivos de configuración sensibles
 .env
-.env.*
-!.env.example
+*.env
 
-# Archivos específicos del sistema operativo
-.DS_Store
-Thumbs.db
-Desktop.ini
-
-# Directorios de Python (en cualquier ubicación)
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.egg-info/
-dist/
-build/
-wheels/
-*.egg
-*.manifest
-*.spec
-*/__pycache__/
-*/*.pyc
-
-# Entornos virtuales de Python
-.venv/
-venv/
-ENV/
-env/
-pip-wheel-metadata/
-
-# Archivos de configuración de IDEs y editores
-.idea/
-.vscode/
-*.swp
-*~
-*.sublime-project
-*.sublime-workspace
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Bases de datos
+# Base de datos local
 *.db
 *.sqlite
 *.sqlite3
-dump.rdb
 
-# Archivos de test y cobertura
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-nosetests.xml
-coverage.xml
-*.cover
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Archivos de compilación y paquetes
-*.tar.gz
-*.zip
-*.rar
+# Logs
+*.log
+logs/
 
-# Archivos de Jupyter Notebook
-.ipynb_checkpoints
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# Archivos de Office temporales
-~$*.doc*
-~$*.xls*
-~$*.ppt*
+# OS
+.DS_Store
+Thumbs.db
 
-# Archivos temporales y de respaldo
-*.tmp
-*.bak
-*.backup
-*~
-
-# Archivos del sistema de trading
-temp_*
-backup_*
-
-# Otros
-.python-version
-celerybeat-schedule
-/node_modules/
-/public/
-/build/ 
+# Archivos temporales
+temp/
+tmp/
+*.tmp 
